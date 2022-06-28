@@ -38,6 +38,12 @@ def get_HESS_h2_SS(XtX,XX,LD,beta,se,N,var_Y,LDthres=0.1):
     #obtain independent signals
     P = len(Indidx)
     XtX_id = XtX[np.ix_(Indidx,Indidx)]
+    print('Indidx:', len(Indidx), P)
+    print(Indidx)
+    print('XtX:', XtX.shape)
+    print(XtX)
+    print('XtX_id:', XtX_id.shape)
+    print(XtX_id)
     R_inv = np.linalg.inv(XtX_id)
     vec_id = XX[Indidx] * beta[Indidx]
     h2_hess = (np.dot(np.dot(vec_id.transpose(),R_inv),vec_id)-var_Y*P)/(var_Y*(N-P))

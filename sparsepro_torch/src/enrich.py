@@ -2,25 +2,26 @@ import pandas as pd
 import argparse
 import time
 from scipy.stats import chi2_contingency
-import numpy as np
+import torch
+#import numpy as np
 from scipy.special import softmax
 import os
 import sys
 
-np.set_printoptions(precision=4, linewidth=200)
+torch.set_printoptions(precision=4, linewidth=200)
 
 def title():
     print('**********************************************************************')
     print('* SparsePro for testing functional enrichment of annotations         *')
     print('* Version 1.0.1                                                      *')
-    print('* (C) Wenmin Zhang (wenmin.zhang@mail.mcgill.ca)                     *')
+    print('* Gilead Turok, Ekene Ezeunala, Jack Cleeve                          *')
     print('**********************************************************************')
     print()
 
 def get_sig_enrich(A,all_PIP):
     
-    W = np.zeros(A.shape[1])
-    W_se = np.zeros(A.shape[1])
+    W = torch.zeros(A.shape[1])
+    W_se = torch.zeros(A.shape[1])
     eps = 1000
     tot = all_PIP.sum()
     
@@ -29,12 +30,12 @@ def get_sig_enrich(A,all_PIP):
         for i in range(A.shape[1]):
             idxall = [x for x in range(A.shape[1])]
             idxall.remove(i)
-            k = softmax(np.dot(A[:,idxall],W[idxall]))
+            k = softmax(torch.dot(A[:,idxall],W[idxall]))
             kr = k[A[:,i]==1].sum()
-            r = all_PIP[np.where(A[:,i])[0]].sum()/tot
-            W_new = np.log((1-kr) * r / (1-r) / (kr))
+            r = all_PIP[torch.where(A[:,i])[0]].sum()/tot
+            W_new = torch.log((1-kr) * r / (1-r) / (kr))
             W[i] = W_new
-            W_se_new = np.sqrt(1/(r*tot)+1/((1-r)*tot)-1/(kr*A.shape[0])-1/((1-kr)*A.shape[0]))
+            W_se_new = torch.sqrt(1/(r*tot)+1/((1-r)*tot)-1/(kr*A.shape[0])-1/((1-kr)*A.shape[0]))
             W_se[i] = W_se_new
         eps = ((W - W_old)**2).sum()
         #print("iteration {} with diff {}".format(ite,eps))
@@ -74,10 +75,10 @@ for k in anno.columns:
     K = allPIP.values.sum()
     M = allPIP.loc[anno[k]==1].values.sum()
     
-    obs = np.array([[K-M,P-A-K+M],[M,A-M]])
+    obs = torch.tensor([[K-M,P-A-K+M],[M,A-M]])
     g, p, dof, expctd = chi2_contingency(obs, lambda_="log-likelihood")
-    W = np.log(M*(P-A)/A/(K-M))
-    W_se = np.sqrt(1/M + 1/(K-M) - 1/A - 1/(P-A))
+    W = torch.log(M*(P-A)/A/(K-M))
+    W_se = torch.sqrt(1/M + 1/(K-M) - 1/A - 1/(P-A))
     Wsep[k] = [W,W_se,p]
 
 df_Wsep = pd.DataFrame(Wsep).round(4)

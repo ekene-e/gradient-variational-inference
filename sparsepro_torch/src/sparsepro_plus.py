@@ -2,25 +2,26 @@ import pandas as pd
 import argparse
 import os
 import time
-import numpy as np
+#import numpy as np
+import torch
 import pickle
 from scipy.special import softmax
 import scipy.sparse as sparse
 
-np.set_printoptions(precision=4, linewidth=200)
+torch.set_printoptions(precision=4, linewidth=200)
 
 def title():
     print('**********************************************************************')
     print('* SparsePro+ for annotated fine-mapping                              *')
-    print('* Version 1.0.1                                                      *')
-    print('* (C) Wenmin Zhang (wenmin.zhang@mail.mcgill.ca)                     *')
+    print('* Version 1.0.2                                                      *')
+    print('* Gilead Turok, Ekene Ezeunala, Jack Cleeve                          *')
     print('**********************************************************************')
     print()
 
 def get_XX_XtX_ytX(LD,beta,se,var_Y):
     '''get sufficient statistics from summary statistics'''
     XX = var_Y/(se**2)
-    XtX = LD * var_Y / (np.dot(se.reshape(-1,1),se.reshape(1,-1)))
+    XtX = LD * var_Y / (torch.dot(se.reshape(-1,1),se.reshape(1,-1)))
     ytX = XX * beta
     return XX, XtX, ytX
 
@@ -54,12 +55,12 @@ class SparsePro(object):
         '''initialize and set hyperparameters'''
         self.p = P
         self.k = K
-        self.gamma = np.zeros((self.p,self.k))
-        self.beta_mu = np.zeros((self.p,self.k))
-        self.beta_prior_tau = np.tile((1.0 / var_Y * h2 * np.array([k+1 for k in range(self.k)])),(self.p,1))
+        self.gamma = torch.zeros((self.p,self.k))
+        self.beta_mu = torch.zeros((self.p,self.k))
+        self.beta_prior_tau = torch.tile((1.0 / var_Y * h2 * torch.array([k+1 for k in range(self.k)])),(self.p,1))
         self.y_tau = 1.0 / (var_Y * (1-h2))
-        self.prior_pi = np.ones((self.p,)) * (1/self.p)
-        self.beta_post_tau = np.tile(XX.reshape(-1,1),(1,self.k)) * self.y_tau + self.beta_prior_tau
+        self.prior_pi = torch.ones((self.p,)) * (1/self.p)
+        self.beta_post_tau = torch.tile(XX.reshape(-1,1),(1,self.k)) * self.y_tau + self.beta_prior_tau
         
     def infer_q_beta(self,XX,ytX,XtX,LD):
         '''perform variational updates'''
@@ -67,24 +68,24 @@ class SparsePro(object):
             idxall = [x for x in range(self.k)]
             idxall.remove(k)
             beta_all_k = (self.gamma[:,idxall] * self.beta_mu[:,idxall]).sum(axis=1)
-            self.beta_mu[:,k] = (ytX-np.dot(beta_all_k, XtX))/self.beta_post_tau[:,k] * self.y_tau
-            u = -0.5*np.log(self.beta_post_tau[:,k]) + np.log(self.prior_pi.transpose()) + 0.5 * self.beta_mu[:,k]**2 * self.beta_post_tau[:,k]
+            self.beta_mu[:,k] = (ytX-torch.dot(beta_all_k, XtX))/self.beta_post_tau[:,k] * self.y_tau
+            u = -0.5*torch.log(self.beta_post_tau[:,k]) + torch.log(self.prior_pi.transpose()) + 0.5 * self.beta_mu[:,k]**2 * self.beta_post_tau[:,k]
             self.gamma[:,k] = softmax(u)
-            #maxid = np.argmax(u)
+            #maxid = torch.argmax(u)
             #self.gamma[abs(LD[maxid])<0.05,k]= 0.0
 
     def get_elbo(self):
         
         beta_all = (self.gamma * self.beta_mu).sum(axis=1)
-        ll1 = self.y_tau * np.dot(beta_all,ytX)
+        ll1 = self.y_tau * torch.dot(beta_all,ytX)
         ll2 = - 0.5 * self.y_tau * ((((self.gamma * self.beta_mu**2).sum(axis=1) * XX).sum()))
         W = self.gamma * self.beta_mu
-        WtRW = np.dot(np.dot(W.transpose(),XtX),W)
-        ll3 = - 0.5 * self.y_tau * ( WtRW.sum() - np.diag(WtRW).sum())
+        WtRW = torch.dot(torch.dot(W.transpose(),XtX),W)
+        ll3 = - 0.5 * self.y_tau * ( WtRW.sum() - torch.diag(WtRW).sum())
         ll = ll1 + ll2 + ll3
         betaterm1 = -0.5 * (self.beta_prior_tau * self.gamma * (self.beta_mu**2)).sum()
-        gammaterm1 = (self.gamma * np.tile(self.prior_pi.reshape(-1,1),(1,self.k))).sum()
-        gammaterm2 = (self.gamma[self.gamma!=0] * np.log(self.gamma[self.gamma!=0])).sum()
+        gammaterm1 = (self.gamma * torch.tile(self.prior_pi.reshape(-1,1),(1,self.k))).sum()
+        gammaterm2 = (self.gamma[self.gamma!=0] * torch.log(self.gamma[self.gamma!=0])).sum()
         mkl = betaterm1 + gammaterm1 - gammaterm2
         elbo = ll + mkl
         
@@ -92,7 +93,7 @@ class SparsePro(object):
        
     def get_PIP(self):
         
-        return np.max((self.gamma),axis=1)
+        return torch.max((self.gamma),axis=1)
         
     def update_pi(self, new_pi):
         
@@ -101,13 +102,13 @@ class SparsePro(object):
     def get_effect_dict(self):
         
         numidx = (self.gamma>0.1).sum(axis=0)
-        matidx = np.argsort(-self.gamma, axis=0)
+        matidx = torch.argsort(-self.gamma, axis=0)
         return {i:matidx[0:numidx[i],i].tolist() for i in range(self.k) if numidx[i]>0}
     
     def get_effect_num_dict(self):
         
-        gamma = np.round(self.gamma,4)
-        beta_mu = np.round(self.beta_mu,4)
+        gamma = torch.round(self.gamma,4)
+        beta_mu = torch.round(self.beta_mu,4)
         effect = self.get_effect_dict()
         eff_gamma = {i:gamma[effect[i],i].tolist() for i in effect}
         eff_mu = {i:beta_mu[effect[i],i].tolist() for i in effect}
@@ -215,7 +216,7 @@ for i in range(len(ldlists)):
     
     ianno = anno.loc[idx]
     ANN = ianno.values[:,sigidx]
-    new_pi= softmax(np.dot(ANN,W_new))
+    new_pi= softmax(torch.dot(ANN,W_new))
     
     model.update_pi(new_pi)
     model.train(XX, ytX, XtX, LD.values,verbose=args.verbose,loss=elbo)
