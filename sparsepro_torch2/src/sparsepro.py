@@ -1,3 +1,4 @@
+from unicodedata import decimal
 import pandas as pd
 import argparse
 import time
@@ -136,17 +137,29 @@ class SparsePro(object):
         numidx = (self.gamma>0.1).sum(axis=0)
         matidx = torch.argsort(-self.gamma, axis=0)
         return {i:matidx[0:numidx[i],i].tolist() for i in range(self.k) if numidx[i]>0}
-    
+    '''
     def get_effect_num_dict(self):
         
+        effect = self.get_effect_dict()
+        gamma = np.round(self.gamma[effect[i],i].tolist(), 4)
+        beta_mu = np.round(self.beta_mu[effect[i],i].tolist(), 4)
+        eff_gamma = {i: gamma for i in effect}
+        eff_mu = {i: beta_mu for i in effect}
+        
+        return eff_gamma, eff_mu
+
+    '''
+
+    def get_effect_num_dict(self):
+
         gamma = torch.round(self.gamma, decimals=4)
         beta_mu = torch.round(self.beta_mu, decimals=4)
         effect = self.get_effect_dict()
-        eff_gamma = {i:gamma[effect[i],i].tolist() for i in effect}
-        eff_mu = {i:beta_mu[effect[i],i].tolist() for i in effect}
+        eff_gamma = {i: np.round(gamma[effect[i], i].tolist(), 4) for i in effect}
+        eff_mu = {i: np.round(beta_mu[effect[i], i].tolist(), 4) for i in effect}
         
         return eff_gamma, eff_mu
-    
+
     def train(self,XX,ytX,XtX,LD,maxite=50,eps=0.01,verbose=False,loss=0.0):
 
         for ite in range(maxite):
@@ -243,10 +256,6 @@ for i in range(len(ldlists)):
     eff_gamma, eff_mu = model.get_effect_num_dict()
     
     pip_tensor = model.get_PIP()
-    
-    print(pip_tensor)
-    print(pip_tensor.shape, pip_tensor.dtype)
-    
     pip_vec = torch.round(pip_tensor, decimals=4)
     pip.extend([pip_vec[i] for i in effidx])
     pip_name.extend([idx[i] for i in effidx])
