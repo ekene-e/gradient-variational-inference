@@ -137,18 +137,6 @@ class SparsePro(object):
         numidx = (self.gamma>0.1).sum(axis=0)
         matidx = torch.argsort(-self.gamma, axis=0)
         return {i:matidx[0:numidx[i],i].tolist() for i in range(self.k) if numidx[i]>0}
-    '''
-    def get_effect_num_dict(self):
-        
-        effect = self.get_effect_dict()
-        gamma = np.round(self.gamma[effect[i],i].tolist(), 4)
-        beta_mu = np.round(self.beta_mu[effect[i],i].tolist(), 4)
-        eff_gamma = {i: gamma for i in effect}
-        eff_mu = {i: beta_mu for i in effect}
-        
-        return eff_gamma, eff_mu
-
-    '''
 
     def get_effect_num_dict(self):
 
@@ -240,7 +228,7 @@ for i in range(len(ldlists)):
         print('Not enough effective variants, skipping')
         continue
 
-     # note make_tensors() accepts LD.values (attribute) and returns LD_values (variable)
+    # note make_tensors() accepts LD.values (attribute) and returns LD_values (variable)
     XX, ytX, XtX, LD_values = make_tensors(XX, ytX, XtX, LD.values)
     model = SparsePro(len(beta),args.K,XX,args.var_Y,h2_hess,var_b) 
     model.train(XX, ytX, XtX, LD_values,verbose=args.verbose)
@@ -257,7 +245,7 @@ for i in range(len(ldlists)):
     
     pip_tensor = model.get_PIP()
     pip_vec = torch.round(pip_tensor, decimals=4)
-    pip.extend([pip_vec[i] for i in effidx])
+    pip.extend([pip_vec[i].item() for i in effidx])
     pip_name.extend([idx[i] for i in effidx])
     
     if len(mcs)==0:

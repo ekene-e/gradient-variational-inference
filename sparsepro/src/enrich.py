@@ -73,6 +73,8 @@ for k in anno.columns:
     A = (anno[k]).sum()
     K = allPIP.values.sum()
     M = allPIP.loc[anno[k]==1].values.sum()
+
+    print(K)
     
     obs = np.array([[K-M,P-A-K+M],[M,A-M]])
     g, p, dof, expctd = chi2_contingency(obs, lambda_="log-likelihood")

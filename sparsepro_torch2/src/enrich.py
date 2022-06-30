@@ -3,6 +3,7 @@ import argparse
 import time
 from scipy.stats import chi2_contingency
 import numpy as np
+import torch
 from scipy.special import softmax
 import os
 import sys
@@ -17,24 +18,26 @@ def title():
     print('**********************************************************************')
     print()
 
-def get_sig_enrich(A,all_PIP):
+def get_sig_enrich(A, all_PIP):
+
+    A = torch.tensor(A, dtype=torch.float32)
     
-    W = np.zeros(A.shape[1])
-    W_se = np.zeros(A.shape[1])
+    W = torch.zeros(A.shape[1])
+    W_se = torch.zeros(A.shape[1])
     eps = 1000
     tot = all_PIP.sum()
     
     for ite in range(20):
-        W_old = W.copy()
+        W_old = W.clone()
         for i in range(A.shape[1]):
             idxall = [x for x in range(A.shape[1])]
             idxall.remove(i)
-            k = softmax(np.dot(A[:,idxall],W[idxall]))
+            k = softmax(torch.matmul(A[:,idxall],W[idxall]))
             kr = k[A[:,i]==1].sum()
-            r = all_PIP[np.where(A[:,i])[0]].sum()/tot
-            W_new = np.log((1-kr) * r / (1-r) / (kr))
+            r = all_PIP[torch.where(A[:,i])[0]].sum()/tot
+            W_new = torch.log((1-kr) * r / (1-r) / (kr))
             W[i] = W_new
-            W_se_new = np.sqrt(1/(r*tot)+1/((1-r)*tot)-1/(kr*A.shape[0])-1/((1-kr)*A.shape[0]))
+            W_se_new = torch.sqrt(1/(r*tot)+1/((1-r)*tot)-1/(kr*A.shape[0])-1/((1-kr)*A.shape[0]))
             W_se[i] = W_se_new
         eps = ((W - W_old)**2).sum()
         #print("iteration {} with diff {}".format(ite,eps))
@@ -70,14 +73,14 @@ Wsep = {}
 
 for k in anno.columns:
     P = len(anno[k])
-    A = (anno[k]).sum()
-    K = allPIP.values.sum()
+    A = torch.tensor((anno[k]).sum(), dtype=torch.float32)
+    K = torch.tensor(allPIP.values.sum(), dtype=torch.float32)
     M = allPIP.loc[anno[k]==1].values.sum()
-    
-    obs = np.array([[K-M,P-A-K+M],[M,A-M]])
+
+    obs = torch.tensor([[K-M,P-A-K+M],[M,A-M]])
     g, p, dof, expctd = chi2_contingency(obs, lambda_="log-likelihood")
-    W = np.log(M*(P-A)/A/(K-M))
-    W_se = np.sqrt(1/M + 1/(K-M) - 1/A - 1/(P-A))
+    W = torch.log(M*(P-A)/A/(K-M))
+    W_se = torch.sqrt(1/M + 1/(K-M) - 1/A - 1/(P-A))
     Wsep[k] = [W,W_se,p]
 
 df_Wsep = pd.DataFrame(Wsep).round(4)

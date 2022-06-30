@@ -3,6 +3,7 @@ import argparse
 import os
 import time
 import numpy as np
+import torch
 import pickle
 from scipy.special import softmax
 import scipy.sparse as sparse
@@ -48,18 +49,24 @@ def load_ld_npz(ld_prefix):
     df_R = pd.DataFrame(R, index=df_ld_snps.index, columns=df_ld_snps.index)
     return df_R, df_ld_snps
 
+def make_tensors(*args):
+    tensor_list = []
+    for array in args:
+        tensor_list.append(torch.tensor(array, dtype=torch.float32))
+    return tensor_list
+
 class SparsePro(object):
     
     def __init__(self,P,K,XX,var_Y,h2):
         '''initialize and set hyperparameters'''
         self.p = P
         self.k = K
-        self.gamma = np.zeros((self.p,self.k))
-        self.beta_mu = np.zeros((self.p,self.k))
-        self.beta_prior_tau = np.tile((1.0 / var_Y * h2 * np.array([k+1 for k in range(self.k)])),(self.p,1))
-        self.y_tau = 1.0 / (var_Y * (1-h2))
-        self.prior_pi = np.ones((self.p,)) * (1/self.p)
-        self.beta_post_tau = np.tile(XX.reshape(-1,1),(1,self.k)) * self.y_tau + self.beta_prior_tau
+        self.gamma = torch.zeros((self.p,self.k))
+        self.beta_mu = torch.zeros((self.p,self.k))
+        self.beta_prior_tau = torch.tile(torch.tensor(1.0 / var_Y * h2 * np.array([k+1 for k in range(self.k)]),dtype=torch.float32),(self.p,1))
+        self.y_tau = torch.tensor(1.0 / (var_Y * (1-h2)), dtype=torch.float32)
+        self.prior_pi = torch.ones((self.p,)) * (1/self.p)
+        self.beta_post_tau = torch.tile(XX.reshape(-1,1),(1,self.k)) * self.y_tau + self.beta_prior_tau
         
     def infer_q_beta(self,XX,ytX,XtX,LD):
         '''perform variational updates'''
@@ -67,8 +74,8 @@ class SparsePro(object):
             idxall = [x for x in range(self.k)]
             idxall.remove(k)
             beta_all_k = (self.gamma[:,idxall] * self.beta_mu[:,idxall]).sum(axis=1)
-            self.beta_mu[:,k] = (ytX-np.dot(beta_all_k, XtX))/self.beta_post_tau[:,k] * self.y_tau
-            u = -0.5*np.log(self.beta_post_tau[:,k]) + np.log(self.prior_pi.transpose()) + 0.5 * self.beta_mu[:,k]**2 * self.beta_post_tau[:,k]
+            self.beta_mu[:,k] = (ytX-torch.matmul(beta_all_k, XtX))/self.beta_post_tau[:,k] * self.y_tau
+            u = -0.5*torch.log(self.beta_post_tau[:,k]) + torch.log(self.prior_pi.transpose()) + 0.5 * self.beta_mu[:,k]**2 * self.beta_post_tau[:,k]
             self.gamma[:,k] = softmax(u)
             #maxid = np.argmax(u)
             #self.gamma[abs(LD[maxid])<0.05,k]= 0.0
@@ -76,15 +83,15 @@ class SparsePro(object):
     def get_elbo(self):
         
         beta_all = (self.gamma * self.beta_mu).sum(axis=1)
-        ll1 = self.y_tau * np.dot(beta_all,ytX)
+        ll1 = self.y_tau * torch.matmul(beta_all,ytX)
         ll2 = - 0.5 * self.y_tau * ((((self.gamma * self.beta_mu**2).sum(axis=1) * XX).sum()))
         W = self.gamma * self.beta_mu
-        WtRW = np.dot(np.dot(W.transpose(),XtX),W)
-        ll3 = - 0.5 * self.y_tau * ( WtRW.sum() - np.diag(WtRW).sum())
+        WtRW = torch.matmul(torch.matmul(W.transpose(),XtX),W)
+        ll3 = - 0.5 * self.y_tau * ( WtRW.sum() - torch.diag(WtRW).sum())
         ll = ll1 + ll2 + ll3
         betaterm1 = -0.5 * (self.beta_prior_tau * self.gamma * (self.beta_mu**2)).sum()
-        gammaterm1 = (self.gamma * np.tile(self.prior_pi.reshape(-1,1),(1,self.k))).sum()
-        gammaterm2 = (self.gamma[self.gamma!=0] * np.log(self.gamma[self.gamma!=0])).sum()
+        gammaterm1 = (self.gamma * torch.tile(self.prior_pi.reshape(-1,1),(1,self.k))).sum()
+        gammaterm2 = (self.gamma[self.gamma!=0] * torch.log(self.gamma[self.gamma!=0])).sum()
         mkl = betaterm1 + gammaterm1 - gammaterm2
         elbo = ll + mkl
         
@@ -92,7 +99,8 @@ class SparsePro(object):
        
     def get_PIP(self):
         
-        return np.max((self.gamma),axis=1)
+        (val, idx) = torch.max((self.gamma),axis=1) # torch max returns a tuple
+        return val
         
     def update_pi(self, new_pi):
         
@@ -106,11 +114,11 @@ class SparsePro(object):
     
     def get_effect_num_dict(self):
         
-        gamma = np.round(self.gamma,4)
-        beta_mu = np.round(self.beta_mu,4)
+        gamma = torch.round(self.gamma, decimals=4)
+        beta_mu = torch.round(self.beta_mu, decimals=4)
         effect = self.get_effect_dict()
-        eff_gamma = {i:gamma[effect[i],i].tolist() for i in effect}
-        eff_mu = {i:beta_mu[effect[i],i].tolist() for i in effect}
+        eff_gamma = {i:np.round(gamma[effect[i],i].tolist(), 4) for i in effect}
+        eff_mu = {i:np.round(beta_mu[effect[i],i].tolist(), 4) for i in effect}
         
         return eff_gamma, eff_mu
     
@@ -215,10 +223,12 @@ for i in range(len(ldlists)):
     
     ianno = anno.loc[idx]
     ANN = ianno.values[:,sigidx]
-    new_pi= softmax(np.dot(ANN,W_new))
+    new_pi= softmax(torch.matmul(ANN,W_new))
     
+    # note make_tensors() accepts LD.values (attribute) and returns LD_values (variable)
+    XX, ytX, XtX, LD_values = make_tensors(XX, ytX, XtX, LD.values)
     model.update_pi(new_pi)
-    model.train(XX, ytX, XtX, LD.values,verbose=args.verbose,loss=elbo)
+    model.train(XX, ytX, XtX, LD_values,verbose=args.verbose,loss=elbo)
     
     mcs = model.get_effect_dict()
     eff_gamma, eff_mu = model.get_effect_num_dict()
