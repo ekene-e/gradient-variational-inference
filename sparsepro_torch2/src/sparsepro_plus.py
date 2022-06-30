@@ -75,7 +75,7 @@ class SparsePro(object):
             idxall.remove(k)
             beta_all_k = (self.gamma[:,idxall] * self.beta_mu[:,idxall]).sum(axis=1)
             self.beta_mu[:,k] = (ytX-torch.matmul(beta_all_k, XtX))/self.beta_post_tau[:,k] * self.y_tau
-            u = -0.5*torch.log(self.beta_post_tau[:,k]) + torch.log(self.prior_pi.transpose()) + 0.5 * self.beta_mu[:,k]**2 * self.beta_post_tau[:,k]
+            u = -0.5*torch.log(self.beta_post_tau[:,k]) + torch.log(self.prior_pi.t()) + 0.5 * self.beta_mu[:,k]**2 * self.beta_post_tau[:,k]
             self.gamma[:,k] = softmax(u)
             #maxid = np.argmax(u)
             #self.gamma[abs(LD[maxid])<0.05,k]= 0.0
@@ -86,7 +86,7 @@ class SparsePro(object):
         ll1 = self.y_tau * torch.matmul(beta_all,ytX)
         ll2 = - 0.5 * self.y_tau * ((((self.gamma * self.beta_mu**2).sum(axis=1) * XX).sum()))
         W = self.gamma * self.beta_mu
-        WtRW = torch.matmul(torch.matmul(W.transpose(),XtX),W)
+        WtRW = torch.matmul(torch.matmul(W.t(),XtX),W)
         ll3 = - 0.5 * self.y_tau * ( WtRW.sum() - torch.diag(WtRW).sum())
         ll = ll1 + ll2 + ll3
         betaterm1 = -0.5 * (self.beta_prior_tau * self.gamma * (self.beta_mu**2)).sum()
@@ -168,7 +168,7 @@ print("LD list with {} LD blocks loaded\n".format(len(ldlists)))
 
 W_sig = pd.read_csv(args.W,sep="\s+")
 sigidx = W_sig['sigidx'].tolist()
-W_new = W_sig['W_sig'].values
+W_new = torch.tensor(W_sig['W_sig'].values, dtype=torch.float32) # convert to tensor
 
 apip = []
 apip_name=[]
@@ -222,7 +222,7 @@ for i in range(len(ldlists)):
         continue
     
     ianno = anno.loc[idx]
-    ANN = ianno.values[:,sigidx]
+    ANN = torch.tensor(ianno.values[:,sigidx], dtype=torch.float32) # convert to tensor
     new_pi= softmax(torch.matmul(ANN,W_new))
     
     # note make_tensors() accepts LD.values (attribute) and returns LD_values (variable)
@@ -233,8 +233,9 @@ for i in range(len(ldlists)):
     mcs = model.get_effect_dict()
     eff_gamma, eff_mu = model.get_effect_num_dict()
     
-    pip_vec = model.get_PIP().round(4)
-    apip.extend([pip_vec[i] for i in effidx])
+    pip_tensor = model.get_PIP()
+    pip_vec = torch.round(pip_tensor, decimals=4)
+    apip.extend([pip_vec[i].item() for i in effidx])
     apip_name.extend([idx[i] for i in effidx])
     
     if len(mcs)==0:
