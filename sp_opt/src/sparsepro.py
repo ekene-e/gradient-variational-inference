@@ -27,7 +27,7 @@ def get_XX_XtX_ytX(LD,beta,se,var_Y):
     ytX = XX * beta
     return XX, XtX, ytX
 
-#unstandardized HESS extended from Shi et al.,2016
+#unstandardized Heritability Estimate from Summary Staistics (HESS) extended from Shi et al.,2016
 def get_HESS_h2_SS(XtX,XX,LD,beta,se,N,var_Y,LDthres=0.1):
     '''calculate local heritabilities'''
     idx_retain = []
