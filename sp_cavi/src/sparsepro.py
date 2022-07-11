@@ -153,6 +153,7 @@ class SparsePro(object):
         for ite in range(maxite):
             self.infer_q_beta(XX, ytX, XtX, LD)
             ll, mkl, elbo = self.get_elbo()
+            if i % 5 == 0: print(elbo.item()) # printing ELBO
             if verbose:
                 print('*'*70)
                 print('Iteration-->{} . Likelihood: {:.2f} . KL: {:.2f} . ELBO: {:.2f}'.format(ite, ll, mkl, elbo))
@@ -240,7 +241,7 @@ for i in range(len(ldlists)):
         pickle.dump(savelist,open_file)
         open_file.close()
     
-    mcs = model.get_effect_dict()
+    mcs = model.get_effect_dict() # model credible sets
     eff_gamma, eff_mu = model.get_effect_num_dict()
     
     pip_tensor = model.get_PIP()
