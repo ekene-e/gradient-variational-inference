@@ -117,6 +117,18 @@ class SparsePro(nn.Module):
 
         return new_beta_mu, new_gamma
 
+        '''
+        for k in range(self.k): # vectorize this code
+            idxall = [x for x in range(self.k)]
+            idxall.remove(k)
+            beta_all_k = (self.gamma[:,idxall] * self.beta_mu[:,idxall]).sum(axis=1)
+            self.beta_mu[:,k] = (ytX-torch.matmul(beta_all_k, XtX))/self.beta_post_tau[:,k] * self.y_tau
+            u = -0.5*torch.log(self.beta_post_tau[:,k]) + torch.log(self.prior_pi.t()) + 0.5 * self.beta_mu[:,k]**2 * self.beta_post_tau[:,k]
+            self.gamma[:,k] = self.softmax(u)
+            #maxid = torch.argmax(u)
+            #self.gamma[abs(LD[maxid])<0.05,k]= 0.0
+        '''
+
     def loss(self, pred):
         beta_mu, gamma = pred # unpack prediction tuple
         beta_all = (gamma * beta_mu).sum(axis=1)
@@ -243,17 +255,17 @@ for i in range(len(ldlists)):
     # note make_tensors() accepts LD.values (attribute) and returns LD_values (variable)
     XX, ytX, XtX, LD_values = make_tensors(XX, ytX, XtX, LD.values)
     model = SparsePro(len(beta),args.K,XX,args.var_Y,h2_hess,var_b) 
-    opt = optim.Adam(model.parameters())
+    opt = optim.Adam(model.parameters(), maximize=True)
 
     print(model.parameters())
 
     # training loop
-    for i in range(50):
+    for i in range(750):
         opt.zero_grad()
         pred = model(XX, ytX, XtX, LD) # pred = (beta_mu, gamma)
         _, _, loss = model.loss(pred)
         loss.backward()
-        if i % 5 == 0: print(loss.item())
+        if i % 10 == 0: print(loss.item())
         opt.step()
     
     if args.tmp:
