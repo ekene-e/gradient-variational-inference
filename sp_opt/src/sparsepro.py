@@ -183,6 +183,7 @@ class SparsePro(nn.Module):
             if abs(elbo-loss)<eps:
                 break
             loss = elbo
+            print(loss)
 
 parser = argparse.ArgumentParser(description='SparsePro- Commands:')
 parser.add_argument('--ss', type=str, default=None, help='path to summary stats', required=True)
