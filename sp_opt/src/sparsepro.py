@@ -255,7 +255,7 @@ for i in range(len(ldlists)):
     # note make_tensors() accepts LD.values (attribute) and returns LD_values (variable)
     XX, ytX, XtX, LD_values = make_tensors(XX, ytX, XtX, LD.values)
     model = SparsePro(len(beta),args.K,XX,args.var_Y,h2_hess,var_b) 
-    opt = optim.Adam(model.parameters(), maximize=True)
+    opt = optim.SparseAdam(model.parameters(), maximize=True)
 
     print(model.parameters())
 
