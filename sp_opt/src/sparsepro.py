@@ -99,6 +99,8 @@ class SparsePro(nn.Module):
         self.prior_pi = torch.ones((self.p,)) * (1/self.p)
         self.beta_post_tau = torch.tile(XX.reshape(-1,1),(1,self.k)) * self.y_tau + self.beta_prior_tau
         
+        # forward function and optimizer seem to serve the same function
+        # so why have both???
     def forward(self,XX,ytX,XtX,LD):
         '''perform variational updates'''
 
