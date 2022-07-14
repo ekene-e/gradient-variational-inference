@@ -91,7 +91,7 @@ class SparsePro(nn.Module):
         self.p = P
         self.k = K
         self.softmax = nn.Softmax(dim=0)
-        self.gamma = self.init_gamma()
+        self.gamma = nn.Parameter(self.init_gamma())
         self.beta_mu = nn.Parameter(torch.zeros((self.p,self.k)))
         #self.gamma = nn.Parameter(torch.rand(self.p, self.k))
         #self.beta_mu = nn.Parameter(torch.rand(self.p, self.k))
@@ -104,7 +104,7 @@ class SparsePro(nn.Module):
         weights = torch.tensor(1/self.p).repeat(self.p)
         multinomial = torch.multinomial(weights, self.k, replacement=True)
         one_hot = F.one_hot(multinomial, num_classes=self.p)
-        return nn.Parameter(one_hot.type(torch.float32).T)
+        return one_hot.type(torch.float32).T
 
     '''
     def forward(self,XX,ytX,XtX,LD):
@@ -255,10 +255,10 @@ for i in range(len(ldlists)):
     # note make_tensors() accepts LD.values (attribute) and returns LD_values (variable)
     XX, ytX, XtX, LD_values = make_tensors(XX, ytX, XtX, LD.values)
     model = SparsePro(len(beta),args.K,XX,args.var_Y,h2_hess,var_b) 
-    opt = optim.Adam(model.parameters(), lr=1e-9, maximize=True, )
+    opt = optim.Adam(model.parameters(), lr=1e-3, maximize=True, )
 
     # training loop
-    for i in range(20):
+    for i in range(100):
         opt.zero_grad()
         loss = model(XX, ytX, XtX, LD) # use ELBO as loss function
         loss.backward()
@@ -294,8 +294,7 @@ for i in range(len(ldlists)):
             tl.append(idx[mcs[i][0]])
             mcs_idx = [idx[j] for j in mcs[i]]
             print('The {}-th effect contains effective variants:'.format(i))
-            #print('causal variants: {}'.format(mcs_idx))
-            print('casual variants: too many to print rn')
+            print('causal variants: {}'.format(mcs_idx))
             print('posterior inclusion probabilities: {}'.format(eff_gamma[i]))
             print('posterior causal effect size: {}'.format(eff_mu[i])) 
             print()
