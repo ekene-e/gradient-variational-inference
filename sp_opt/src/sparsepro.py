@@ -257,17 +257,15 @@ for i in range(len(ldlists)):
     model = SparsePro(len(beta),args.K,XX,args.var_Y,h2_hess,var_b) 
     opt = optim.Adam(model.parameters(), maximize=True)
 
-    print(model.parameters())
-
     # training loop
-    for i in range(750):
+    for i in range(50):
         opt.zero_grad()
         pred = model(XX, ytX, XtX, LD) # pred = (beta_mu, gamma)
         _, _, loss = model.loss(pred)
         loss.backward()
         if i % 10 == 0: print(loss.item())
         opt.step()
-    
+        
     if args.tmp:
         ll,mkl,elbo = model.loss(pred)
         savelist = [h2_hess,var_b,model,elbo]
