@@ -6,6 +6,7 @@ import os
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
 import pickle
 import scipy.sparse as sparse
@@ -90,7 +91,7 @@ class SparsePro(nn.Module):
         self.p = P
         self.k = K
         self.softmax = nn.Softmax(dim=0)
-        self.gamma = nn.Parameter(torch.zeros((self.p,self.k)))
+        self.gamma = self.init_gamma()
         self.beta_mu = nn.Parameter(torch.zeros((self.p,self.k)))
         #self.gamma = nn.Parameter(torch.rand(self.p, self.k))
         #self.beta_mu = nn.Parameter(torch.rand(self.p, self.k))
@@ -99,6 +100,12 @@ class SparsePro(nn.Module):
         self.prior_pi = torch.ones((self.p,)) * (1/self.p)
         self.beta_post_tau = torch.tile(XX.reshape(-1,1),(1,self.k)) * self.y_tau + self.beta_prior_tau
         
+    def init_gamma(self):
+        weights = torch.tensor(1/self.p).repeat(self.p)
+        multinomial = torch.multinomial(weights, self.k, replacement=True)
+        one_hot = F.one_hot(multinomial, num_classes=self.p)
+        return nn.Parameter(one_hot.type(torch.float32).T)
+
     '''
     def forward(self,XX,ytX,XtX,LD):
         # perform variational updates
@@ -158,7 +165,14 @@ class SparsePro(nn.Module):
         
         numidx = (self.gamma>0.1).sum(axis=0)
         matidx = torch.argsort(-self.gamma, axis=0)
-        return {i:matidx[0:numidx[i],i].tolist() for i in range(self.k) if numidx[i]>0}
+
+        result = dict()
+        for i in range(self.k):
+            if numidx[i] > 0:
+                result[i] = matidx[0: numidx[i], i].tolist()
+
+        #return {i:matidx[0:numidx[i],i].tolist() for i in range(self.k) if numidx[i]>0}
+        return result
 
     def get_effect_num_dict(self):
 
