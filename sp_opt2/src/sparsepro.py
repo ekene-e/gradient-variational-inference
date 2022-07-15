@@ -91,7 +91,7 @@ class SparsePro(nn.Module):
         self.p = P
         self.k = K
         self.softmax = nn.Softmax(dim=0)
-        self.gamma = nn.Parameter(self.init_gamma())
+        self.gamma = nn.Parameter(torch.tensor(1/self.p).repeat(self.p, self.k))
         self.beta_mu = nn.Parameter(torch.zeros((self.p,self.k)))
         #self.gamma = nn.Parameter(torch.rand(self.p, self.k))
         #self.beta_mu = nn.Parameter(torch.rand(self.p, self.k))
@@ -294,7 +294,8 @@ for i in range(len(ldlists)):
             tl.append(idx[mcs[i][0]])
             mcs_idx = [idx[j] for j in mcs[i]]
             print('The {}-th effect contains effective variants:'.format(i))
-            print('causal variants: {}'.format(mcs_idx))
+            # print('causal variants: {}'.format(mcs_idx))
+            print('casual variants: too many!')
             print('posterior inclusion probabilities: {}'.format(eff_gamma[i]))
             print('posterior causal effect size: {}'.format(eff_mu[i])) 
             print()
