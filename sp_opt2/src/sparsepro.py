@@ -1,3 +1,4 @@
+from sched import scheduler
 from unicodedata import decimal
 import pandas as pd
 import argparse
@@ -87,6 +88,15 @@ class SparsePro(nn.Module):
 
     def __init__(self,P,K,XX,var_Y,h2,var_b):
         '''initialize as torch tensors and set hyperparameters'''
+        # super().__init__()
+        # self.p = P
+        # self.k = K
+        # self.gamma = nn.Parameter(torch.zeros((self.p,self.k)))
+        # self.beta_mu = nn.Parameter(torch.zeros((self.p,self.k)))
+        # self.beta_prior_tau = nn.Parameter(torch.tile(torch.tensor(1.0 / var_b * np.array([k+1 for k in range(self.k)]), dtype=torch.float32),(self.p,1)))
+        # self.y_tau = nn.Parameter(torch.tensor(1.0 / (var_Y * (1-h2)), dtype=torch.float32))
+        # self.prior_pi = nn.Parameter(torch.ones((self.p,)) * (1/self.p))
+        # self.beta_post_tau = nn.Parameter(torch.tile(XX.reshape(-1,1),(1,self.k)) * self.y_tau + self.beta_prior_tau)
         super().__init__()
         self.p = P
         self.k = K
@@ -150,6 +160,9 @@ class SparsePro(nn.Module):
         #print('T3: ', torch.all(torch.isnan(t3)))
         #print('T4: ', torch.all(torch.isnan(t4)))
         return elbo
+
+    def print_elbo(self):
+        print(model.forward())
        
     def get_PIP(self):
         
@@ -163,7 +176,7 @@ class SparsePro(nn.Module):
 
     def get_effect_dict(self):
         
-        numidx = (self.gamma>0.1).sum(axis=0)
+        numidx = (self.gamma>0.0000001).sum(axis=0)
         matidx = torch.argsort(-self.gamma, axis=0)
 
         result = dict()
@@ -200,6 +213,9 @@ parser.add_argument("--ukb", action="store_true", help='options for using precom
 args = parser.parse_args()
 
 title()
+
+def print_elbo():
+    print(model(XX, ytX, XtX, LD).item)
 
 if not os.path.exists(args.save):
     os.makedirs(args.save)
@@ -255,16 +271,21 @@ for i in range(len(ldlists)):
     # note make_tensors() accepts LD.values (attribute) and returns LD_values (variable)
     XX, ytX, XtX, LD_values = make_tensors(XX, ytX, XtX, LD.values)
     model = SparsePro(len(beta),args.K,XX,args.var_Y,h2_hess,var_b) 
-    opt = optim.Adam(model.parameters(), lr=1e-3, maximize=True, )
+    opt = optim.Adam(model.parameters(), lr=1e-6, maximize=False, )
+    opt_scheduler = optim.lr_scheduler.ExponentialLR(opt, gamma=0.1)
+
+
 
     # training loop
-    for i in range(100):
-        opt.zero_grad()
-        loss = model(XX, ytX, XtX, LD) # use ELBO as loss function
-        loss.backward()
-        opt.step()
+    for epoch in range(20):
+        for i in range(30):
+            opt.zero_grad()
+            loss = model(XX, ytX, XtX, LD) # use ELBO as loss function
+            loss.backward()
+            opt.step()
 
-        if i % 5 == 0: print(loss.item())
+            if i % 5 == 0: print(loss.item())
+        opt_scheduler.step()
         
     if args.tmp:
         #ll,mkl,elbo = model.loss(pred)
@@ -293,9 +314,9 @@ for i in range(len(ldlists)):
         if mcs[i][0] in effidx:
             tl.append(idx[mcs[i][0]])
             mcs_idx = [idx[j] for j in mcs[i]]
-            print('The {}-th effect contains effective variants:'.format(i))
-            # print('causal variants: {}'.format(mcs_idx))
-            print('casual variants: too many!')
+            print('Effect {} contains effective variants:'.format(i))
+            print('causal variants: {}'.format(mcs_idx))
+            # print('casual variants: too many!')
             print('posterior inclusion probabilities: {}'.format(eff_gamma[i]))
             print('posterior causal effect size: {}'.format(eff_mu[i])) 
             print()
