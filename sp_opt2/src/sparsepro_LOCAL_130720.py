@@ -5,7 +5,9 @@ import time
 import os
 import numpy as np
 import torch
-from scipy.special import softmax
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
 import pickle
 import scipy.sparse as sparse
 
@@ -26,7 +28,7 @@ def get_XX_XtX_ytX(LD,beta,se,var_Y):
     ytX = XX * beta
     return XX, XtX, ytX
 
-#unstandardized HESS extended from Shi et al.,2016
+#unstandardized Heritability Estimate from Summary Staistics (HESS) extended from Shi et al.,2016
 def get_HESS_h2_SS(XtX,XX,LD,beta,se,N,var_Y,LDthres=0.1):
     '''calculate local heritabilities'''
     idx_retain = []
@@ -81,33 +83,50 @@ def make_tensors(*args):
         tensor_list.append(torch.tensor(array, dtype=torch.float32))
     return tensor_list
 
-class SparsePro(object):
-    
+class SparsePro(nn.Module):
+
     def __init__(self,P,K,XX,var_Y,h2,var_b):
         '''initialize as torch tensors and set hyperparameters'''
+        super().__init__()
         self.p = P
         self.k = K
-        self.gamma = torch.zeros((self.p,self.k))
-        self.beta_mu = torch.zeros((self.p,self.k))
+        self.softmax = nn.Softmax(dim=0)
+        self.gamma = nn.Parameter(torch.tensor(1/self.p).repeat(self.p, self.k))
+        self.beta_mu = nn.Parameter(torch.zeros((self.p,self.k)))
+        #self.gamma = nn.Parameter(torch.rand(self.p, self.k))
+        #self.beta_mu = nn.Parameter(torch.rand(self.p, self.k))
         self.beta_prior_tau = torch.tile(torch.tensor(1.0 / var_b * np.array([k+1 for k in range(self.k)]), dtype=torch.float32),(self.p,1))
         self.y_tau = torch.tensor(1.0 / (var_Y * (1-h2)), dtype=torch.float32)
         self.prior_pi = torch.ones((self.p,)) * (1/self.p)
         self.beta_post_tau = torch.tile(XX.reshape(-1,1),(1,self.k)) * self.y_tau + self.beta_prior_tau
         
-    def infer_q_beta(self,XX,ytX,XtX,LD):
-        '''perform variational updates'''
+    def init_gamma(self):
+        weights = torch.tensor(1/self.p).repeat(self.p)
+        multinomial = torch.multinomial(weights, self.k, replacement=True)
+        one_hot = F.one_hot(multinomial, num_classes=self.p)
+        return one_hot.type(torch.float32).T
 
-        for k in range(self.k):
+    '''
+    def forward(self,XX,ytX,XtX,LD):
+        # perform variational updates
+
+        new_beta_mu = self.beta_mu.clone()
+        new_gamma = self.gamma.clone()
+
+        for k in range(self.k): # vectorize this code
             idxall = [x for x in range(self.k)]
             idxall.remove(k)
             beta_all_k = (self.gamma[:,idxall] * self.beta_mu[:,idxall]).sum(axis=1)
-            self.beta_mu[:,k] = (ytX-torch.matmul(beta_all_k, XtX))/self.beta_post_tau[:,k] * self.y_tau
+            new_beta_mu[:,k] = (ytX-torch.matmul(beta_all_k, XtX))/self.beta_post_tau[:,k] * self.y_tau
             u = -0.5*torch.log(self.beta_post_tau[:,k]) + torch.log(self.prior_pi.t()) + 0.5 * self.beta_mu[:,k]**2 * self.beta_post_tau[:,k]
-            self.gamma[:,k] = softmax(u)
+            new_gamma[:,k] = self.softmax(u)
             #maxid = torch.argmax(u)
             #self.gamma[abs(LD[maxid])<0.05,k]= 0.0
 
-    def get_elbo(self):
+        return new_beta_mu, new_gamma
+    '''
+
+    def forward(self, XX, ytX, XtX, LD): # LD not used in this function
         beta_all = (self.gamma * self.beta_mu).sum(axis=1)
         ll1 = self.y_tau * torch.matmul(beta_all,ytX)
         ll2 = - 0.5 * self.y_tau * ((((self.gamma * self.beta_mu**2).sum(axis=1) * XX).sum()))
@@ -120,14 +139,24 @@ class SparsePro(object):
         gammaterm2 = (self.gamma[self.gamma!=0] * torch.log(self.gamma[self.gamma!=0])).sum()
         mkl = betaterm1 + gammaterm1 - gammaterm2
         elbo = ll + mkl
-        
-        return ll,mkl,elbo
+
+        #t1 = self.gamma[self.gamma!=0]
+        #t2 = torch.log(self.gamma[self.gamma!=0])
+        #t3 = t1 * t2
+        #t4 = t3.sum()
+
+        #print('T1: ', torch.all(torch.isnan(t1)))
+        #print('T2: ', torch.all(torch.isnan(t2)))
+        #print('T3: ', torch.all(torch.isnan(t3)))
+        #print('T4: ', torch.all(torch.isnan(t4)))
+        return elbo
        
     def get_PIP(self):
         
         (val, idx) = torch.max((self.gamma),axis=1) # torch max returns a tuple
         return val
         
+    # this func is not used
     def update_pi(self, new_pi):
         
         self.prior_pi = new_pi
@@ -136,7 +165,14 @@ class SparsePro(object):
         
         numidx = (self.gamma>0.1).sum(axis=0)
         matidx = torch.argsort(-self.gamma, axis=0)
-        return {i:matidx[0:numidx[i],i].tolist() for i in range(self.k) if numidx[i]>0}
+
+        result = dict()
+        for i in range(self.k):
+            if numidx[i] > 0:
+                result[i] = matidx[0: numidx[i], i].tolist()
+
+        #return {i:matidx[0:numidx[i],i].tolist() for i in range(self.k) if numidx[i]>0}
+        return result
 
     def get_effect_num_dict(self):
 
@@ -147,19 +183,6 @@ class SparsePro(object):
         eff_mu = {i: np.round(beta_mu[effect[i], i].tolist(), 4) for i in effect}
         
         return eff_gamma, eff_mu
-
-    def train(self,XX,ytX,XtX,LD,maxite=50,eps=1e-3,verbose=False,loss=0.0):
-
-        for ite in range(maxite):
-            self.infer_q_beta(XX, ytX, XtX, LD)
-            ll, mkl, elbo = self.get_elbo()
-            if i % 5 == 0: print(ll.item(), mkl.item(),elbo.item()) # printing ELBO
-            if verbose:
-                print('*'*70)
-                print('Iteration-->{} . Likelihood: {:.2f} . KL: {:.2f} . ELBO: {:.2f}'.format(ite, ll, mkl, elbo))
-            if np.abs(elbo-loss)<eps:
-                break
-            loss = elbo
 
 parser = argparse.ArgumentParser(description='SparsePro- Commands:')
 parser.add_argument('--ss', type=str, default=None, help='path to summary stats', required=True)
@@ -232,16 +255,26 @@ for i in range(len(ldlists)):
     # note make_tensors() accepts LD.values (attribute) and returns LD_values (variable)
     XX, ytX, XtX, LD_values = make_tensors(XX, ytX, XtX, LD.values)
     model = SparsePro(len(beta),args.K,XX,args.var_Y,h2_hess,var_b) 
-    model.train(XX, ytX, XtX, LD_values,verbose=args.verbose)
-    
+    opt = optim.Adam(model.parameters(), lr=1e-3, maximize=True, )
+
+    # training loop
+    for i in range(100):
+        opt.zero_grad()
+        loss = model(XX, ytX, XtX, LD) # use ELBO as loss function
+        loss.backward()
+        opt.step()
+
+        if i % 5 == 0: print(loss.item())
+        
     if args.tmp:
-        ll,mkl,elbo = model.get_elbo()
-        savelist = [h2_hess,var_b,model,elbo]
+        #ll,mkl,elbo = model.loss(pred)
+        loss = model(XX, ytX, XtX, LD)
+        savelist = [h2_hess,var_b,model,loss]
         open_file = open(os.path.join(args.save,'{}.obj'.format(ld)),'wb')
         pickle.dump(savelist,open_file)
         open_file.close()
     
-    mcs = model.get_effect_dict() # model credible sets
+    mcs = model.get_effect_dict()
     eff_gamma, eff_mu = model.get_effect_num_dict()
     
     pip_tensor = model.get_PIP()
@@ -261,7 +294,8 @@ for i in range(len(ldlists)):
             tl.append(idx[mcs[i][0]])
             mcs_idx = [idx[j] for j in mcs[i]]
             print('The {}-th effect contains effective variants:'.format(i))
-            print('causal variants: {}'.format(mcs_idx))
+            # print('causal variants: {}'.format(mcs_idx))
+            print('casual variants: too many!')
             print('posterior inclusion probabilities: {}'.format(eff_gamma[i]))
             print('posterior causal effect size: {}'.format(eff_mu[i])) 
             print()
