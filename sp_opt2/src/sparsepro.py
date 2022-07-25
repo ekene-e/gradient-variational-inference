@@ -4,6 +4,9 @@ import pandas as pd
 import argparse
 import time
 import os
+import matplotlib.pyplot as plt
+import seaborn as sns
+#sns.set()
 import numpy as np
 import torch
 import torch.nn as nn
@@ -113,8 +116,9 @@ class SparsePro(nn.Module):
             XX.reshape(-1, 1), (1, self.k)) * self.y_tau + self.beta_prior_tau
 
         # init beta_mu and gamma
-        gamma, beta_mu = self.init_variational_params(ytX, XtX)
-        self.gamma = nn.Parameter(gamma)
+        beta_mu, u = self.init_variational_params(ytX, XtX)
+        self.u = nn.Parameter(u)
+        self.gamma = self.softmax(u)
         self.beta_mu = nn.Parameter(beta_mu)
 
     
@@ -124,15 +128,16 @@ class SparsePro(nn.Module):
 
         gamma = torch.zeros((self.p,self.k))
         beta_mu = torch.zeros((self.p,self.k))
+        u = torch.zeros((self.p, self.k))
 
         for k in range(self.k): # vectorize this code
             idxall = [x for x in range(self.k)]
             idxall.remove(k)
             beta_all_k = (gamma[:,idxall] * beta_mu[:,idxall]).sum(axis=1)
             beta_mu[:,k] = (ytX-torch.matmul(beta_all_k, XtX))/self.beta_post_tau[:,k] * self.y_tau
-            u = -0.5*torch.log(self.beta_post_tau[:,k]) + torch.log(self.prior_pi.t()) + 0.5 * beta_mu[:,k]**2 * self.beta_post_tau[:,k]
-            gamma[:,k] = self.softmax(u)
-        return gamma, beta_mu
+            u[:,k] = -0.5*torch.log(self.beta_post_tau[:,k]) + torch.log(self.prior_pi.t()) + 0.5 * beta_mu[:,k]**2 * self.beta_post_tau[:,k]
+            gamma[:,k] = self.softmax(u[:,k])
+        return beta_mu, u
 
     def forward(self, XX, ytX, XtX, LD):  # LD not used in this function
         beta_all = (self.gamma * self.beta_mu).sum(axis=1)
@@ -168,7 +173,7 @@ class SparsePro(nn.Module):
 
     def get_effect_dict(self):
 
-        numidx = (self.gamma > 0.0000001).sum(axis=0)
+        numidx = (self.gamma > 0.1).sum(axis=0)
         matidx = torch.argsort(-self.gamma, axis=0)
 
         result = dict()
@@ -298,6 +303,12 @@ for i in range(len(ldlists)):
         if epoch % 5 == 0:
             print(loss.item())
 
+    # plotting
+    pips, _ = torch.max((model.gamma), axis=1)
+    plt.hist(pips.detach().numpy(), bins='auto', 
+                label=f'LD {i}', density=True)
+
+
     if args.tmp:
         #ll,mkl,elbo = model.loss(pred)
         loss = model(XX, ytX, XtX, LD)
@@ -326,14 +337,17 @@ for i in range(len(ldlists)):
             tl.append(idx[mcs[i][0]])
             mcs_idx = [idx[j] for j in mcs[i]]
             print('Effect {} contains effective variants:'.format(i))
-            #print('causal variants: {}'.format(mcs_idx))
-            print('casual variants: too many!')
+            print('causal variants: {}'.format(mcs_idx))
+            #print('casual variants: too many!')
             print('posterior inclusion probabilities: {}'.format(eff_gamma[i]))
             print('posterior causal effect size: {}'.format(eff_mu[i]))
             print()
             cs.append(mcs_idx)
             cs_pip.append(eff_gamma[i])
             cs_eff.append(eff_mu[i])
+
+plt.legend()
+plt.savefig('pips_hist') # save plot
 
 allPIP = pd.DataFrame({"idx": pip_name, "pip": pip})
 allPIP.to_csv(os.path.join(args.save, "{}.pip".format(
