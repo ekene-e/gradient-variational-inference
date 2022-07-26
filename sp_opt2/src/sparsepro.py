@@ -36,7 +36,6 @@ def get_XX_XtX_ytX(LD, beta, se, var_Y):
 
 # unstandardized Heritability Estimate from Summary Staistics (HESS) extended from Shi et al.,2016
 
-
 def get_HESS_h2_SS(XtX, XX, LD, beta, se, N, var_Y, LDthres=0.1):
     '''calculate local heritabilities'''
     idx_retain = []
@@ -64,7 +63,6 @@ def get_HESS_h2_SS(XtX, XX, LD, beta, se, N, var_Y, LDthres=0.1):
     return h2_hess, var_b
 
 # obtain from https://storage.googleapis.com/broad-alkesgroup-public/UKBB_LD/readme_ld.txt
-
 
 def load_ld_npz(ld_prefix):
 
@@ -115,7 +113,7 @@ class SparsePro(nn.Module):
         self.beta_post_tau = torch.tile(
             XX.reshape(-1, 1), (1, self.k)) * self.y_tau + self.beta_prior_tau
 
-        # init beta_mu and gamma
+        # init beta_mu, u, and gamma
         beta_mu, u = self.init_variational_params(ytX, XtX)
         self.u = nn.Parameter(u)
         self.gamma = self.softmax(u)
@@ -140,6 +138,26 @@ class SparsePro(nn.Module):
         return beta_mu, u
 
     def forward(self, XX, ytX, XtX, LD):  # LD not used in this function
+        beta_all = (self.softmax(self.u) * self.beta_mu).sum(axis=1)
+        ll1 = self.y_tau * torch.matmul(beta_all, ytX)
+        ll2 = - 0.5 * self.y_tau * \
+            ((((self.softmax(self.u) * self.beta_mu**2).sum(axis=1) * XX).sum()))
+        W = self.softmax(self.u) * self.beta_mu
+        WtRW = torch.matmul(torch.matmul(W.t(), XtX), W)
+        ll3 = - 0.5 * self.y_tau * (WtRW.sum() - torch.diag(WtRW).sum())
+        ll = ll1 + ll2 + ll3
+        betaterm1 = -0.5 * (self.beta_prior_tau *
+                            self.softmax(self.u) * (self.beta_mu**2)).sum()
+        gammaterm1 = (self.softmax(self.u) * torch.tile(self.prior_pi.reshape(-1, 1),
+                      (1, self.k))).sum()  # confirm torch.tile = np.tile
+        gammaterm2 = (self.softmax(self.u)[self.softmax(self.u) != 0] *
+                      torch.log(self.softmax(self.u)[self.softmax(self.u) != 0])).sum()
+        mkl = betaterm1 + gammaterm1 - gammaterm2
+        elbo = ll + mkl
+        return elbo
+
+    '''
+    def forward(self, XX, ytX, XtX, LD):  # LD not used in this function
         beta_all = (self.gamma * self.beta_mu).sum(axis=1)
         ll1 = self.y_tau * torch.matmul(beta_all, ytX)
         ll2 = - 0.5 * self.y_tau * \
@@ -157,13 +175,15 @@ class SparsePro(nn.Module):
         mkl = betaterm1 + gammaterm1 - gammaterm2
         elbo = ll + mkl
         return elbo
+    '''
 
     def print_elbo(self):
         print(model.forward())
 
     def get_PIP(self):
 
-        (val, idx) = torch.max((self.gamma), axis=1)  # torch max returns a tuple
+        #(val, idx) = torch.max((self.gamma), axis=1)  # torch max returns a tuple
+        (val, idx) = torch.max((self.softmax(self.u)), axis=1)  # torch max returns a tuple
         return val
 
     # this func is not used
@@ -173,8 +193,11 @@ class SparsePro(nn.Module):
 
     def get_effect_dict(self):
 
-        numidx = (self.gamma > 0.1).sum(axis=0)
-        matidx = torch.argsort(-self.gamma, axis=0)
+        #numidx = (self.gamma > 0.1).sum(axis=0)
+        #matidx = torch.argsort(-self.gamma, axis=0)
+
+        numidx = (self.softmax(self.u) > 0.1).sum(axis=0)
+        matidx = torch.argsort(-self.softmax(self.u), axis=0)
 
         result = dict()
         for i in range(self.k):
@@ -186,7 +209,8 @@ class SparsePro(nn.Module):
 
     def get_effect_num_dict(self):
 
-        gamma = torch.round(self.gamma, decimals=8)
+        #gamma = torch.round(self.gamma, decimals=8)
+        gamma = torch.round(self.softmax(self.u), decimals=8)
         beta_mu = torch.round(self.beta_mu, decimals=8)
         effect = self.get_effect_dict()
         eff_gamma = {i: np.round(
@@ -198,7 +222,7 @@ class SparsePro(nn.Module):
 
 
 parser = argparse.ArgumentParser(description='SparsePro- Commands:')
-parser.add_argument('--ss', type=str, default=None,
+parser.add_argument('--ss', type=str, default=N  one,
                     help='path to summary stats', required=True)
 parser.add_argument('--var_Y', type=float, default=None,
                     help='GWAS trait variance', required=True)
@@ -293,7 +317,7 @@ for i in range(len(ldlists)):
     #opt_scheduler = optim.lr_scheduler.ExponentialLR(opt, gamma=0.1)
 
     # training loop
-    for epoch in range(150):
+    for epoch in range(500):
         opt.zero_grad()
         loss = model(XX, ytX, XtX, LD)  # use ELBO as loss function
         loss.backward()
