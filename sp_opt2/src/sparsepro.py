@@ -311,18 +311,18 @@ for i in range(len(ldlists)):
     # note make_tensors() accepts LD.values (attribute) and returns LD_values (variable)
     XX, ytX, XtX, LD_values = make_tensors(XX, ytX, XtX, LD.values)
     model = SparsePro(len(beta), args.K, XX, ytX, XtX, args.var_Y, h2_hess, var_b)
-    opt = optim.Adam(model.parameters(), lr=1e-3, maximize=True)
+    opt = optim.Adam(model.parameters(), lr=1e-2, maximize=True)
     #opt_scheduler = optim.lr_scheduler.ExponentialLR(opt, gamma=0.1)
 
-    # training loop
-    for epoch in range(500):
+    # training loop 136.855
+    for epoch in range(1000):
         opt.zero_grad()
         loss = model(XX, ytX, XtX, LD)  # use ELBO as loss function
         loss.backward()
         opt.step()
         #opt_scheduler.step()
 
-        if epoch % 5 == 0:
+        if epoch % 10 == 0:
             print(loss.item())
 
     if args.tmp:
