@@ -15,6 +15,7 @@ import torch.optim as optim
 import pickle
 import scipy.sparse as sparse
 
+# set precision
 np.set_printoptions(precision=8, linewidth=200)
 
 
