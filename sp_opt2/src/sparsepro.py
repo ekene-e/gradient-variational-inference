@@ -4,9 +4,6 @@ import pandas as pd
 import argparse
 import time
 import os
-import matplotlib.pyplot as plt
-import seaborn as sns
-#sns.set()
 import numpy as np
 import torch
 import torch.nn as nn
@@ -223,7 +220,7 @@ class SparsePro(nn.Module):
 
 
 parser = argparse.ArgumentParser(description='SparsePro- Commands:')
-parser.add_argument('--ss', type=str, default=N  one,
+parser.add_argument('--ss', type=str, default=None,
                     help='path to summary stats', required=True)
 parser.add_argument('--var_Y', type=float, default=None,
                     help='GWAS trait variance', required=True)
@@ -328,12 +325,6 @@ for i in range(len(ldlists)):
         if epoch % 5 == 0:
             print(loss.item())
 
-    # plotting
-    pips, _ = torch.max((model.gamma), axis=1)
-    plt.hist(pips.detach().numpy(), bins='auto', 
-                label=f'LD {i}', density=True)
-
-
     if args.tmp:
         #ll,mkl,elbo = model.loss(pred)
         loss = model(XX, ytX, XtX, LD)
@@ -370,9 +361,6 @@ for i in range(len(ldlists)):
             cs.append(mcs_idx)
             cs_pip.append(eff_gamma[i])
             cs_eff.append(eff_mu[i])
-
-plt.legend()
-plt.savefig('pips_hist') # save plot
 
 allPIP = pd.DataFrame({"idx": pip_name, "pip": pip})
 allPIP.to_csv(os.path.join(args.save, "{}.pip".format(
