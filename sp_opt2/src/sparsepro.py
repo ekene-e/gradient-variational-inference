@@ -311,19 +311,20 @@ for i in range(len(ldlists)):
     # note make_tensors() accepts LD.values (attribute) and returns LD_values (variable)
     XX, ytX, XtX, LD_values = make_tensors(XX, ytX, XtX, LD.values)
     model = SparsePro(len(beta), args.K, XX, ytX, XtX, args.var_Y, h2_hess, var_b)
-    opt = optim.Adam(model.parameters(), lr=1e-2, maximize=True)
-    #opt_scheduler = optim.lr_scheduler.ExponentialLR(opt, gamma=0.1)
+    opt = optim.Adam(model.parameters(), lr=1.8e-2, maximize=True)
 
-    # training loop 136.855
-    for epoch in range(1000):
+    # training loop
+    prev = torch.tensor([0])
+    for epoch in range(5000):
         opt.zero_grad()
         loss = model(XX, ytX, XtX, LD)  # use ELBO as loss function
         loss.backward()
         opt.step()
-        #opt_scheduler.step()
 
-        if epoch % 10 == 0:
-            print(loss.item())
+        if np.abs(loss.item() - prev.item()) < 1e-6: break
+        prev = loss
+
+        if epoch % 10 == 0: print(loss.item())
 
     if args.tmp:
         #ll,mkl,elbo = model.loss(pred)
@@ -354,7 +355,6 @@ for i in range(len(ldlists)):
             mcs_idx = [idx[j] for j in mcs[i]]
             print('Effect {} contains effective variants:'.format(i))
             print('causal variants: {}'.format(mcs_idx))
-            #print('casual variants: too many!')
             print('posterior inclusion probabilities: {}'.format(eff_gamma[i]))
             print('posterior causal effect size: {}'.format(eff_mu[i]))
             print()
