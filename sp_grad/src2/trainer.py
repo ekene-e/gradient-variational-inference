@@ -1,4 +1,5 @@
 import numpy as np
+from sympy import maximum
 import torch
 
 from model import SparsePro
@@ -19,6 +20,7 @@ class Trainer(object):
 
         self.optimizer = torch.optim.Adam(
             self.model.parameters(),
+            maximize=True,
             lr=args.lr,
             weight_decay = args.weight_decay)
 
@@ -26,20 +28,31 @@ class Trainer(object):
         self.model.train()
 
         prev = torch.tensor([0])
-        for _ in range(self.args.max_iter):
+        for epoch in range(self.args.max_iter):
             self.optimizer.zero_grad()
             loss = self.model()
             loss.backward()
             self.optimizer.step()
 
+            temp = torch.argwhere(torch.any(self.model.gamma() > 0.1, axis=1))
+            if self.args.verbose and epoch % 10 == 0: print(f'{loss.item()}\t\t{temp.T}')
             if np.abs(loss.item() - prev.item()) < self.args.eps: break
             prev = loss
 
     def eval(self):
         self.model.eval()
-
+ 
         gamma = self.model.gamma()
-        pred_idx = torch.argwhere(gamma > 0.1) # [? x 2] tensor
-        pred = pred_idx[:,1]
 
-        true = self.data.casual_snps
+        casuality_threshold = 0.1
+        pred_idx = torch.argwhere(torch.any(gamma > casuality_threshold, axis=1))
+        pred = torch.zeros(self.data.p)
+        pred[pred_idx] = 1
+
+        true = self.data.snp_classification
+        true_idx = torch.argwhere(true)
+
+        #print(np.count_nonzero(pred))
+        #print(np.count_nonzero(true))
+        print(np.sort(pred_idx.T))
+        print(np.sort(true_idx.T))

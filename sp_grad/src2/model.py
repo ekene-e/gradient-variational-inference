@@ -1,4 +1,3 @@
-from tkinter import E
 import numpy as np
 import torch
 import torch.nn as nn
@@ -19,27 +18,27 @@ class SparsePro(nn.Module):
         # data
         self.X = X
         self.y = y
-        self.ytX = self.y.T @ self.X # compute once
+        self.ytX = self.y @ self.X # compute once
         self.XtX = self.X.T @ self.X # compute once
-        self.XX = self.XtX # TODO: fix this
+        self.XX = self.ytX # TODO fix this # NOTE: XX has same shape as ytX
 
         # hyper-parameters
         self.p = p # num SNPs
         self.n = n # num individuals
         self.k = k # max num of effects model accounts for
         self.y_var = torch.var(y) # phenotype variance
-        self.b_var = 1 # TODO fix this
-        self.h2 = 1 # TODO fix this
+        self.b_var = 0.000782824441 # TODO fix this
+        self.h2 = 0.00209088070247734 # TODO fix this
 
         # priors
-        self.y_tau = torch.tensor(1.0 / (self.y_var * (1-self.h2)),
-                        dtype=torch.float32)
+        #self.y_tau = torch.tensor(1.0 / (self.y_var * (1-self.h2)), dtype=torch.float32)
+        self.y_tau = 1.0 / (self.y_var * (1-self.h2))
         self.prior_pi = torch.ones((self.p,)) * (1/self.p)
         self.beta_prior_tau = torch.tile(torch.tensor(
-                                1.0 / self.b_var * np.array([k+1 for k in range(self.k)]), 
-                                dtype=torch.float32), (self.p, 1))
-        self.beta_post_tau = torch.tile(XX.reshape(-1, 1), 
-                                (1, self.k)) * self.y_tau + self.beta_prior_tau
+            1.0 / self.b_var * np.array([k+1 for k in range(self.k)]), 
+            dtype=torch.float32), (self.p, 1))
+        self.beta_post_tau = torch.tile(self.XX.reshape(-1, 1), (1, self.k)) * (
+            self.y_tau) + self.beta_prior_tau
 
         # latent variables
         self.softmax = nn.Softmax(dim=0)
@@ -52,7 +51,7 @@ class SparsePro(nn.Module):
 
         Returns
         -------
-        elbo : tensor (1 x 1)
+        elbo : tensor [1 x 1]
             divergence btwn variational approximation to the true posterior
         '''
 
@@ -66,7 +65,7 @@ class SparsePro(nn.Module):
         ll = ll1 + ll2 + ll3
         betaterm1 = -0.5 * (self.beta_prior_tau * self.gamma() 
             * (self.beta_mu**2)).sum()
-        gammaterm1 = self.gamma() * torch.tile(
+        gammaterm1 = (self.gamma() * torch.tile(
             self.prior_pi.reshape(-1, 1), (1, self.k))).sum()
         gammaterm2 = (self.gamma()[self.gamma() != 0] *
             torch.log(self.gamma()[self.gamma() != 0])).sum()
@@ -83,7 +82,7 @@ class SparsePro(nn.Module):
 
         Returns
         -------
-        gamma : (p x k) tensor
+        gamma : [p x k] tensor
             
         '''
         
@@ -102,9 +101,9 @@ class SparsePro(nn.Module):
 
         Returns
         -------
-        beta_mu : (p x k) tensor 
+        beta_mu : [p x k] tensor 
             initial value for variational parameter beta_mu
-        u : (p x k) tensor
+        u : [p x k] tensor
             initial value for variational parameter gamma = softmax(u)
         '''
 

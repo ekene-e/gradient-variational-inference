@@ -116,7 +116,6 @@ class SparsePro(nn.Module):
         self.u = nn.Parameter(u)
         self.gamma = self.softmax(u)
         self.beta_mu = nn.Parameter(beta_mu)
-
     
     def init_variational_params(self, ytX, XtX):
         # initialize the variational parameters gamma and beta_mu 

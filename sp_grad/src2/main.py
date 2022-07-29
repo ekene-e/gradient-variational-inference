@@ -13,17 +13,18 @@ if __name__ == '__main__':
     parser.add_argument('--max-num-effects', type=int, default=9)
 
     # Training Argument
-    parser.add_argument('--lr', type=float, default=1e-3)
-    parser.add_argument('--max-iter', type=int, default=1000)
+    parser.add_argument('--lr', type=float, default=1e-2)
+    parser.add_argument('--max-iter', type=int, default=1800)
     parser.add_argument('--eps', type=float, default=1e-5,
         help='threshold for loss improvement')
     parser.add_argument('--weight-decay', type=float, default=5e-3)
 
     # System Argument
     parser.add_argument('--seed', type=int, default=10)
+    parser.add_argument('--verbose', action='store_true')
 
     # Unsure If Necessary
-    parser.add_argument('--prefix', type=str, required=True, 
+    parser.add_argument('--prefix', type=str, 
         help='prefix for result files')
     parser.add_argument("--tmp", action="store_true",
         help='options for saving intermediate file')
@@ -37,3 +38,4 @@ if __name__ == '__main__':
 
     trainer = Trainer(args)
     trainer.train()
+    trainer.eval()
