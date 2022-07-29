@@ -193,13 +193,17 @@ class SparsePro(nn.Module):
         #numidx = (self.gamma > 0.1).sum(axis=0)
         #matidx = torch.argsort(-self.gamma, axis=0)
 
-        numidx = (self.softmax(self.u) > 0.1).sum(axis=0)
-        matidx = torch.argsort(-self.softmax(self.u), axis=0)
+        # gamma [p x k]
+
+        numidx = (self.softmax(self.u) > 0.1).sum(axis=0) # if effect truly has a casual snp
+        matidx = torch.argsort(-self.softmax(self.u), axis=0) # idx of which snps cause an effect in order of greatest to smallest confidence in gamma/casuality
 
         result = dict()
         for i in range(self.k):
-            if numidx[i] > 0:
+            if numidx[i] > 0: # check that effect has some gamma > 0.1
                 result[i] = matidx[0: numidx[i], i].tolist()
+                # dict[effect_num] = list of all casual SNPs with gamma > 0.1 that cause this effect
+                # e.g. result[3] returns list of SNP idexes that cause effect 3 with a gamma > 0.1
 
         # return {i:matidx[0:numidx[i],i].tolist() for i in range(self.k) if numidx[i]>0}
         return result
