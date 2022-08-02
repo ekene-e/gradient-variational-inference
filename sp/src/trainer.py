@@ -40,6 +40,7 @@ class Trainer(object):
 
             # print loss
             temp = torch.argwhere(torch.any(self.model.gamma() > self.args.casuality_threshold, axis=1))
+            if self.args.verbose and epoch == 0: print('\tELBO\t\t\t\tPredicted Casual SNPs\n', '-'*80)
             if self.args.verbose and epoch % 10 == 0: print(f'{loss.item()}\t\t{temp.T}')
             
             # check convergence
@@ -51,20 +52,26 @@ class Trainer(object):
  
         gamma = self.model.gamma()
 
-        # predictions of casual SNPs from top k gamma values
+        # predictions of casual SNPs 
+    
+        ''' # pred idx from top k gamma values --> pretty sure this is wrong
         val, flatten_idx = torch.topk(gamma.flatten(), k=10, sorted=True) # top k 
         pred_idx = flatten_idx % self.model.p
+        '''
+
+        # pred idx from gamma values > casuality_threshold
+        pred_idx = torch.argwhere(torch.any(self.model.gamma() > self.args.casuality_threshold, axis=1)).T
         pred = torch.zeros(self.data.p)
         pred[pred_idx] = 1
 
-        # true casual SNPs from data
+        # true casual SNPs
         true = self.data.snp_classification
         true_idx = torch.argwhere(true).T
 
-        if self.args.verbose: print(np.sort(pred_idx.data), '\n', np.sort(true_idx))
+        if self.args.verbose: print('\n\nPredicted Casual SNPs:\t', np.sort(pred_idx.data),
+                                    '\nTrue Casual SNPs:\t', np.sort(true_idx))
         self.eval_helper(true, pred)
 
     def eval_helper(self, true, pred):
         disp = PrecisionRecallDisplay.from_predictions(true, pred)
-        disp.plot()
         plt.show()

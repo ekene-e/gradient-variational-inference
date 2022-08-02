@@ -15,9 +15,9 @@ if __name__ == '__main__':
 
     # Training Argument
     parser.add_argument('--opt', choices=['adam', 'cavi'], required=True)
-    parser.add_argument('--lr', type=float, default=1e-2)
-    parser.add_argument('--max-iter', type=int, default=20)
-    parser.add_argument('--eps', type=float, default=1e-5,
+    parser.add_argument('--lr', type=float, default=1e-1)
+    parser.add_argument('--max-iter', type=int, default=500)
+    parser.add_argument('--eps', type=float, default=1e-7,
         help='threshold for loss improvement')
     parser.add_argument('--weight-decay', type=float, default=5e-3)
 
@@ -32,7 +32,6 @@ if __name__ == '__main__':
         help='options for saving intermediate file')
     parser.add_argument("--ukb", action="store_true",
         help='use precomputed UK Biobank ld files from PolyFun')
-
 
     args = parser.parse_args()
 
