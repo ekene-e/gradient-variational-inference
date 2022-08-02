@@ -6,15 +6,17 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser('SparsePro- for Simulated Data')
 
     # Directory Argument
-    parser.add_argument('--data-dir', type=str, required=True) 
-    parser.add_argument('--save-dir', type=str, required=True)
+    parser.add_argument('--data-dir', type=str, default='data') 
+    parser.add_argument('--save-dir', type=str, default='res')
 
     # Model Argument
     parser.add_argument('--max-num-effects', type=int, default=9)
+    parser.add_argument('--casuality-threshold', type=float, default=0.1)
 
     # Training Argument
+    parser.add_argument('--opt', choices=['adam', 'cavi'], required=True)
     parser.add_argument('--lr', type=float, default=1e-2)
-    parser.add_argument('--max-iter', type=int, default=1800)
+    parser.add_argument('--max-iter', type=int, default=20)
     parser.add_argument('--eps', type=float, default=1e-5,
         help='threshold for loss improvement')
     parser.add_argument('--weight-decay', type=float, default=5e-3)
