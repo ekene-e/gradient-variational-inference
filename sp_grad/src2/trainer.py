@@ -1,12 +1,11 @@
 import numpy as np
 import torch
-from sklearn.metrics import precision_recall_curve, PrecisionRecallDisplay 
+from sklearn.metrics import PrecisionRecallDisplay 
 import matplotlib.pyplot as plt
 
 from model import SparsePro
 from data import Data
 from cavi_opt import CAVI
-
 
 class Trainer(object):
     def __init__(self, args):
@@ -52,14 +51,13 @@ class Trainer(object):
  
         gamma = self.model.gamma()
 
-        #pred_idx = torch.argwhere(torch.any(gamma > self.args.casuality_threshold, axis=1))
+        # predictions of casual SNPs from top k gamma values
         val, flatten_idx = torch.topk(gamma.flatten(), k=10, sorted=True) # top k 
         pred_idx = flatten_idx % self.model.p
         pred = torch.zeros(self.data.p)
         pred[pred_idx] = 1
-        #pred = pred.reshape(gamma.shape)
-        #pred_idx = torch.argwhere(pred)[:,0].reshape(1,-1)
 
+        # true casual SNPs from data
         true = self.data.snp_classification
         true_idx = torch.argwhere(true).T
 
@@ -67,7 +65,6 @@ class Trainer(object):
         self.eval_helper(true, pred)
 
     def eval_helper(self, true, pred):
-        #precision, recall, thresh = precision_recall_curve(true, pred)
         disp = PrecisionRecallDisplay.from_predictions(true, pred)
         disp.plot()
         plt.show()
