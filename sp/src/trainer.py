@@ -39,13 +39,20 @@ class Trainer(object):
             self.optimizer.step()
 
             # print loss
-            temp = torch.argwhere(torch.any(self.model.gamma() > self.args.causality_threshold, axis=1))
-            if self.args.verbose and epoch == 0: print('\tELBO\t\t\t\tPredicted Casual SNPs\n', '-'*80)
-            if self.args.verbose and epoch % 10 == 0: print(f'{loss.item()}\t\t{temp.T}')
+            temp = torch.argwhere(torch.any(
+                self.model.gamma() > self.args.causality_threshold, axis=1))
+            if self.args.verbose and epoch == 0: 
+                print('\tELBO\t\t\t\tPredicted Casual SNPs\n', '-'*80)
+            if self.args.verbose and epoch % 20 == 0: 
+                print(f'{loss:.4f}\t\t{temp.T.detach().numpy().reshape(-1)}')
             
             # check convergence
             if np.abs(loss.item() - prev.item()) < self.args.eps: break
             prev = loss
+
+        # print loss at convergence
+        if self.args.verbose:
+            print(f'At iter {epoch}, ELBO converged to {self.model():.4f}')
 
     def eval(self):
         self.model.eval()
@@ -54,14 +61,7 @@ class Trainer(object):
         gamma = self.model.gamma()
         causality_thresh = self.args.causality_threshold
 
-        # predictions of casual SNPs 
-    
-        ''' # pred idx from top k gamma values --> pretty sure this is wrong
-        val, flatten_idx = torch.topk(gamma.flatten(), k=10, sorted=True) # top k 
-        pred_idx = flatten_idx % self.model.p
-        '''
-
-        # pred idx from gamma values > causality_threshold
+        # predictions of casual SNPs with gamma values > causality_threshold
         pred_idx = torch.argwhere(torch.any(gamma > causality_thresh, axis=1)).T
         pred = torch.zeros(self.data.p)
         pred[pred_idx] = 1
@@ -70,8 +70,12 @@ class Trainer(object):
         true = self.data.snp_classification
         true_idx = torch.argwhere(true).T
 
-        if self.args.verbose: print('\n\nPredicted Casual SNPs:\t', np.sort(pred_idx.data),
-                                    '\nTrue Casual SNPs:\t', np.sort(true_idx))
+        # print predicted and true causal SNPs
+        if self.args.verbose: 
+            print(
+                '\n\nPredicted Causal SNPs:\t', np.sort(pred_idx.detach().reshape(-1)),
+                '\nTrue Causal SNPs:\t', np.sort(true_idx.reshape(-1))
+            )
         self.eval_helper(true, pred)
 
     def eval_helper(self, true, pred):
