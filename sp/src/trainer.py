@@ -24,7 +24,7 @@ class Trainer(object):
                 self.model.parameters(),
                 maximize=True,
                 lr=args.lr,
-                weight_decay = args.weight_decay)
+                weight_decay=args.weight_decay)
         elif args.opt == 'cavi':
             self.optimizer = CAVI(self.model.parameters(), self.model)
 
@@ -39,7 +39,7 @@ class Trainer(object):
             self.optimizer.step()
 
             # print loss
-            temp = torch.argwhere(torch.any(self.model.gamma() > self.args.casuality_threshold, axis=1))
+            temp = torch.argwhere(torch.any(self.model.gamma() > self.args.causality_threshold, axis=1))
             if self.args.verbose and epoch == 0: print('\tELBO\t\t\t\tPredicted Casual SNPs\n', '-'*80)
             if self.args.verbose and epoch % 10 == 0: print(f'{loss.item()}\t\t{temp.T}')
             
@@ -49,8 +49,10 @@ class Trainer(object):
 
     def eval(self):
         self.model.eval()
- 
+
+        # extract relevant variables
         gamma = self.model.gamma()
+        causality_thresh = self.args.causality_threshold
 
         # predictions of casual SNPs 
     
@@ -59,8 +61,8 @@ class Trainer(object):
         pred_idx = flatten_idx % self.model.p
         '''
 
-        # pred idx from gamma values > casuality_threshold
-        pred_idx = torch.argwhere(torch.any(self.model.gamma() > self.args.casuality_threshold, axis=1)).T
+        # pred idx from gamma values > causality_threshold
+        pred_idx = torch.argwhere(torch.any(gamma > causality_thresh, axis=1)).T
         pred = torch.zeros(self.data.p)
         pred[pred_idx] = 1
 

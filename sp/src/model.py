@@ -35,10 +35,17 @@ class SparsePro(nn.Module):
         self.y_tau = 1.0 / (self.y_var * (1-self.h2))
         self.prior_pi = torch.ones((self.p,)) * (1/self.p)
         self.beta_prior_tau = torch.tile(torch.tensor(
-            1.0 / self.b_var * np.array([k+1 for k in range(self.k)]), 
+            (1.0 / self.b_var * np.array([k+1 for k in range(self.k)])), 
             dtype=torch.float32), (self.p, 1))
         self.beta_post_tau = torch.tile(self.XX.reshape(-1, 1), (1, self.k)) * (
             self.y_tau) + self.beta_prior_tau
+
+        term = torch.sum(self.beta_post_tau <= 0)
+        print('Beta Post Tau <= 0:\t', term)
+        t1 = torch.tile(self.XX.reshape(-1, 1), (1, self.k)) * self.y_tau
+        t2 = self.beta_prior_tau
+        print('T1:\t', t1)
+        print('T2:\t', t2)
 
         # latent variables
         self.softmax = nn.Softmax(dim=0)
@@ -121,4 +128,9 @@ class SparsePro(nn.Module):
                         + torch.log(self.prior_pi.t()) 
                         + 0.5 * beta_mu[:,k]**2 * self.beta_post_tau[:,k])
             gamma[:,k] = self.softmax(u[:,k])
+
+            #print(k)
+            #term = torch.log(self.beta_post_tau[:,k])
+            #print(torch.sum(torch.isnan(term)))
+            #print(-0.5*torch.log(self.beta_post_tau[:,k]), 0.5 * beta_mu[:,k]**2 * self.beta_post_tau[:,k])   
         return beta_mu, u
