@@ -1,4 +1,7 @@
+import os
+
 import numpy as np
+from pandas import lreshape
 import torch
 from sklearn.metrics import PrecisionRecallDisplay 
 import matplotlib.pyplot as plt
@@ -76,8 +79,37 @@ class Trainer(object):
                 '\n\nPredicted Causal SNPs:\t', np.sort(pred_idx.detach().reshape(-1)),
                 '\nTrue Causal SNPs:\t', np.sort(true_idx.reshape(-1))
             )
-        self.eval_helper(true, pred)
+        self.plot_auprc(true, pred)
 
-    def eval_helper(self, true, pred):
+    def plot_auprc(self, true, pred):
+        '''Plot Area Under Precision Recall Curve (AUPRC)
+
+        AUPRC is a popular binary classification metric, outputing a scalar
+        taking into account precision and recall. 
+
+        Parameters
+        ----------
+        true : tensor [num_true_causal_SNPs x 1]
+            true causal SNPs, obtained from simulated data generation
+        pred : tensor [num_predicted_causal_SNPs x 1]
+            predicted causal SNPs, obtained where gamma > causality_threshold
+        '''
+
         disp = PrecisionRecallDisplay.from_predictions(true, pred)
-        plt.show()
+        
+        plot_dir = 'res/plots' # relative path to directory of saved plots
+        filename = ('AUPRC'
+            f'___opt-{self.args.opt}'
+            f'_causal-thresh-{self.args.causality_threshold}'
+            f'_lr-{self.args.lr}'
+            f'_max-iter-{self.args.max_iter}'
+            f'_eps-{self.args.eps}'
+            '.png'
+        )
+
+        # save AUPRC plot
+        plt.savefig(os.path.join(plot_dir, filename))
+
+        # show AUPRC plot
+        if self.args.verbose:
+            plt.show()
