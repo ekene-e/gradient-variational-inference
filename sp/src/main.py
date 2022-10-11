@@ -25,14 +25,6 @@ if __name__ == '__main__':
     parser.add_argument('--seed', type=int, default=10)
     parser.add_argument('--verbose', action='store_true')
 
-    # Unsure If Necessary
-    parser.add_argument('--prefix', type=str, 
-        help='prefix for result files')
-    parser.add_argument("--tmp", action="store_true",
-        help='options for saving intermediate file')
-    parser.add_argument("--ukb", action="store_true",
-        help='use precomputed UK Biobank ld files from PolyFun')
-
     args = parser.parse_args()
 
     os.makedirs(args.save_dir, exist_ok=True)
