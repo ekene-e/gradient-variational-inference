@@ -79,7 +79,10 @@ class Trainer(object):
                 '\n\nPredicted Causal SNPs:\t', np.sort(pred_idx.detach().reshape(-1)),
                 '\nTrue Causal SNPs:\t', np.sort(true_idx.reshape(-1))
             )
-        self.plot_auprc(true, pred)
+
+        print(true.shape, gamma.shape)
+        self.plot_auprc(true, gamma.detach().numpy())
+        #self.plot_auprc(true, pred)
 
     def plot_auprc(self, true, pred):
         '''Plot Area Under Precision Recall Curve (AUPRC)
