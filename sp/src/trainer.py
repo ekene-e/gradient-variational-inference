@@ -80,7 +80,6 @@ class Trainer(object):
                 '\nTrue Causal SNPs:\t', np.sort(true_idx.reshape(-1))
             )
 
-        print(true.shape, gamma.shape)
         self.plot_auprc(true, gamma.detach().numpy())
         #self.plot_auprc(true, pred)
 
