@@ -4,7 +4,9 @@ Work of Gilead Turok and Ekene Ezeunala under [Prof David Knowles](https://david
 
 Our work tries to solve the fine-mapping problem: determing which genotypes cause an observed phenotype.
 
-Specifically, we are extending the SparsePro model ([preprint paper](https://www.biorxiv.org/content/10.1101/2021.10.04.463133v1) and [Github code](https://github.com/zhwm/SparsePro)) to better incorporate functional annotations. Specifically we use PyTorch's auto-differentiation capibilities to smartly learn the functional annotation weight vector $w$ that determines which functional annotations are important. We use the SparsePro code as a starting point, refactored it, and are now running our own experiments.
+Specifically, we are extending the SparsePro model ([preprint paper](https://www.biorxiv.org/content/10.1101/2021.10.04.463133v1) and [Github code](https://github.com/zhwm/SparsePro)) to better incorporate functional annotations, additional biological and chemical information that allow us to know more about our genotypes and thus better solve the fine-mapping problem.
+
+More specifically, we use PyTorch's auto-differentiation capibilities to smartly learn the functional annotation weight vector $w$ that determines which functional annotations are important. We use the SparsePro code as a starting point, refactored it, and are now running our own experiments.
 
 # Installing and Running
 
