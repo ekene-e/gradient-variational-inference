@@ -14,7 +14,7 @@ class CAVI(Optimizer):
         
         defaults = {} # empty dict
         super(CAVI, self).__init__(params, defaults)
-
+    
     @torch.no_grad()
     def step(self, closure=None):
         u = self.param_groups[0]['params'][0]
