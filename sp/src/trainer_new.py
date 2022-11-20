@@ -17,7 +17,7 @@ class Trainer(object):
         self.args = args
         self.data_loader = Data_Loader(args.data_dir)
         
-        self.w, self.y, self.cs_idx = self.data_loader.global_params()
+        self.w, self.cs_idx = self.data_loader.global_params()
         
         self.weight_vec_optimizer = torch.optim.Adam([self.w], 
                                             maximize=True,
@@ -29,8 +29,8 @@ class Trainer(object):
     def init_models(self):
         model_list = []
         for locus in range(self.args.num_loci):
-            X, A, n, p = self.data_loader.locus_data(locus) # load locus data
-            model = SparsePro(X, self.y, p, n, self.w, A, self.args.max_num_effects)
+            X, y, A, n, p = self.data_loader.locus_data(locus) # load locus data
+            model = SparsePro(X, y, p, n, self.w, A, self.args.max_num_effects)
             
             if self.args.opt == 'adam':
                 opt = torch.optim.Adam(
