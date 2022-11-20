@@ -8,8 +8,10 @@ class SparsePro(nn.Module):
         self,
         X,
         y,
-        p=322,
-        n=1299,
+        p,
+        n,
+        w,
+        A, 
         k=9
     ):
 
@@ -18,10 +20,13 @@ class SparsePro(nn.Module):
         # data
         self.X = X
         self.y = y
+        self.weight_vec = w
+        self.annotations = A
+        
         self.ytX = self.y @ self.X # compute once
         self.XtX = self.X.T @ self.X # compute once
-        self.XX = self.ytX # TODO fix this # NOTE: XX has same shape as ytX
-
+        self.XX = torch.sum(self.X ** 2, axis=0)
+    
         # hyper-parameters
         self.p = p # num SNPs
         self.n = n # num individuals
@@ -29,11 +34,12 @@ class SparsePro(nn.Module):
         self.y_var = torch.var(y) # phenotype variance
         self.b_var = 0.000782824441 # TODO fix this
         self.h2 = 0.00209088070247734 # TODO fix this
+        self.softmax = nn.Softmax(dim=0)
 
         # priors
         #self.y_tau = torch.tensor(1.0 / (self.y_var * (1-self.h2)), dtype=torch.float32)
         self.y_tau = 1.0 / (self.y_var * (1-self.h2))
-        self.prior_pi = torch.ones((self.p,)) * (1/self.p)
+        self.prior_pi = self.softmax(A @ w)
         self.beta_prior_tau = torch.tile(torch.tensor(
             (1.0 / self.b_var * np.array([k+1 for k in range(self.k)])), 
             dtype=torch.float32), (self.p, 1))
@@ -41,7 +47,6 @@ class SparsePro(nn.Module):
             self.y_tau) + self.beta_prior_tau
 
         # latent variables
-        self.softmax = nn.Softmax(dim=0)
         beta_mu, u = self.init_variational_params()
         self.u = nn.Parameter(u)
         self.beta_mu = nn.Parameter(beta_mu)
@@ -88,6 +93,14 @@ class SparsePro(nn.Module):
         
         gamma = self.softmax(self.u)
         return gamma
+    
+    def update_pi(self, w):
+        """ update prior causal SNP vector pi with new weight vector w
+
+        Args:
+            w ([num_annotations]): vector that weights functional annotations
+        """
+        self.prior_pi = self.softmax(self.annotations @ w)
 
     def init_variational_params(self):
         '''Initialize the variational parameters gamma and beta_mu with CAVI
@@ -121,5 +134,5 @@ class SparsePro(nn.Module):
                         + torch.log(self.prior_pi.t()) 
                         + 0.5 * beta_mu[:,k]**2 * self.beta_post_tau[:,k])
             gamma[:,k] = self.softmax(u[:,k])
-
+            
         return beta_mu, u

@@ -1,6 +1,7 @@
 import os
 import argparse
-from trainer import Trainer
+#from trainer import Trainer
+from trainer_new import Trainer
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('SparsePro- for Simulated Data')
@@ -16,7 +17,8 @@ if __name__ == '__main__':
     # Training Argument
     parser.add_argument('--opt', choices=['adam', 'cavi'], required=True)
     parser.add_argument('--lr', type=float, default=1e-1)
-    parser.add_argument('--max-iter', type=int, default=500)
+    parser.add_argument('--num-epochs', type=int, default=500)
+    parser.add_argument('--num-steps', type=int, default=30)
     parser.add_argument('--eps', type=float, default=1e-7,
         help='threshold for loss improvement')
     parser.add_argument('--weight-decay', type=float, default=5e-3)
@@ -24,6 +26,9 @@ if __name__ == '__main__':
     # System Argument
     parser.add_argument('--seed', type=int, default=10)
     parser.add_argument('--verbose', action='store_true')
+    
+    # Dataset Argument
+    parser.add_argument('--num-loci', type=int,default=10)
 
     args = parser.parse_args()
 
