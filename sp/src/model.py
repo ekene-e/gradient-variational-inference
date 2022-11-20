@@ -45,6 +45,9 @@ class SparsePro(nn.Module):
             dtype=torch.float32), (self.p, 1))
         self.beta_post_tau = torch.tile(self.XX.reshape(-1, 1), (1, self.k)) * (
             self.y_tau) + self.beta_prior_tau
+        
+        assert(self.y_var != 0)
+        assert(torch.all(self.beta_post_tau > 0))
 
         # latent variables
         beta_mu, u = self.init_variational_params()

@@ -12,7 +12,6 @@ if __name__ == '__main__':
 
     # Model Argument
     parser.add_argument('--max-num-effects', type=int, default=9)
-    parser.add_argument('--causality-threshold', type=float, default=0.1)
 
     # Training Argument
     parser.add_argument('--opt', choices=['adam', 'cavi'], required=True)

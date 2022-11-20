@@ -20,9 +20,9 @@ class Data_Loader:
         # self.snp_classification = torch.tensor(snp_classification, dtype=torch.float32)
         
     def global_params(self):
-        data = np.load(os.path.join(self.data_dir, 'global_params.npz'))
+        data = np.load(os.path.join(self.data_dir, 'global_params.npz'), allow_pickle=True)
         w = torch.tensor(data['weight'], dtype=torch.float32)
-        cs_idx = torch.tensor(data['cs_idx'], dtype=torch.float32)
+        cs_idx = data['cs_idx'].item() # dict of lists
         return w, cs_idx
         
     def locus_data(self, locus_num):

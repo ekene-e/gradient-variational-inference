@@ -1,4 +1,5 @@
 import os
+from tqdm import trange
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -18,6 +19,7 @@ class Trainer(object):
         self.data_loader = Data_Loader(args.data_dir)
         
         self.w, self.cs_idx = self.data_loader.global_params()
+        print(self.cs_idx)
         
         self.weight_vec_optimizer = torch.optim.Adam([self.w], 
                                             maximize=True,
@@ -28,6 +30,8 @@ class Trainer(object):
 
     def init_models(self):
         model_list = []
+        self.total_num_SNPs = 0
+        
         for locus in range(self.args.num_loci):
             X, y, A, n, p = self.data_loader.locus_data(locus) # load locus data
             model = SparsePro(X, y, p, n, self.w, A, self.args.max_num_effects)
@@ -42,7 +46,7 @@ class Trainer(object):
                 opt = CAVI(model.parameters(), model)
                 
             model_list.append((model, opt))
-            return model_list
+            self.total_num_SNPs += p
         return model_list
     
     def train(self):
@@ -71,42 +75,37 @@ class Trainer(object):
                     self.weight_vec_optimizer.step()
 
                     # print loss
-                    if self.args.verbose and epoch % 20 == 0: 
-                        print(loss.item())
-                    return
+                    if self.args.verbose and epoch % 3 == 0 and iter == self.args.num_steps-1: 
+                        print(f'Locus {locus}: ', loss.item())
+                    
             # check convergence
             if np.abs(loss.item() - prev.item()) < self.args.eps: break
             prev = loss
 
-        # print loss at convergence
-        if self.args.verbose:
-            print(f'At iter {epoch}, ELBO converged to {self.model():.4f}')
-
     def eval(self):
-        self.model.eval()
+        pred = torch.zeros((self.total_num_SNPs))
+        true = torch.zeros((self.total_num_SNPs))
+        
+        prev = 0
+        for locus in range(self.args.num_loci):
+            # load model and set to evaluation mode
+            self.model, _ = self.model_list[locus]
+            self.model.eval()
 
-        # extract relevant variables
-        gamma = self.model.gamma()
-        causality_thresh = self.args.causality_threshold
+            # extract gamma, the prior SNP causality vector 
+            gamma = self.model.gamma()
+            
+            # compute multivariate-or function using log-sum-exp trick
+            multivariate_or = 1 - torch.exp(torch.sum(torch.log(1 - gamma), dim=1))
+            
+            # update pred and true for this locus
+            pred[prev:prev + self.model.p] = multivariate_or
+            if locus in self.cs_idx:
+                true_idx = torch.tensor(self.cs_idx[locus])
+                true[prev + true_idx] = 1
+            prev += self.model.p
 
-        # predictions of casual SNPs with gamma values > causality_threshold
-        pred_idx = torch.argwhere(torch.any(gamma > causality_thresh, axis=1)).T
-        pred = torch.zeros(self.data.p)
-        pred[pred_idx] = 1
-
-        # true casual SNPs
-        true = self.data.snp_classification
-        true_idx = torch.argwhere(true).T
-
-        # print predicted and true causal SNPs
-        if self.args.verbose: 
-            print(
-                '\n\nPredicted Causal SNPs:\t', np.sort(pred_idx.detach().reshape(-1)),
-                '\nTrue Causal SNPs:\t', np.sort(true_idx.reshape(-1))
-            )
-
-        self.plot_auprc(true, gamma.detach().numpy())
-        #self.plot_auprc(true, pred)
+        self.plot_auprc(true.detach().numpy(), pred.detach().numpy())
 
     def plot_auprc(self, true, pred):
         '''Plot Area Under Precision Recall Curve (AUPRC)
@@ -127,9 +126,8 @@ class Trainer(object):
         plot_dir = 'res/plots' # relative path to directory of saved plots
         filename = ('AUPRC'
             f'___opt-{self.args.opt}'
-            f'_causal-thresh-{self.args.causality_threshold}'
             f'_lr-{self.args.lr}'
-            f'_max-iter-{self.args.max_iter}'
+            f'_max-iter-{self.args.num_epochs}'
             f'_eps-{self.args.eps}'
             '.png'
         )
