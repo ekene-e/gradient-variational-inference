@@ -19,9 +19,15 @@ class Trainer(object):
         self.args = args
         self.data_loader = Data_Loader(args.data_dir)
         
-        self.w, self.cs_idx = self.data_loader.global_params()
-        print(self.cs_idx)
+        # true annotation weight vector and true causal SNPs
+        self.true_w, self.true_cs = self.data_loader.global_params()
+        self.num_annotations = self.true_w.shape[0]
+        # annotation weight vector to be learned as a parameter
+        self.w = self.init_weight_vec()
         
+        print(self.w)
+        
+        # optimizer for annotation weight vector w
         if self.args.weight_opt == 'adam':
             self.weight_opt = torch.optim.Adam([self.w], 
                                                 maximize=True,
@@ -30,7 +36,17 @@ class Trainer(object):
         elif self.args.weight_opt == 'binary':
             self.weight_opt = Binary([self.w])
         
+        # list of (SparsePro model, SparsePro optimizer) tuples
         self.model_list = self.init_models()
+        
+    def init_weight_vec(self):
+        self.rng = torch.Generator()
+        self.rng.manual_seed(self.args.seed)
+        
+        mean = torch.zeros(self.num_annotations)
+        std = torch.eye(self.num_annotations)
+        w = torch.normal(mean=mean, std=std, generator=self.rng).diag()
+        return nn.Parameter(w)
 
     def init_models(self):
         model_list = []
@@ -59,19 +75,21 @@ class Trainer(object):
             if self.args.verbose and epoch == 0: print('ELBO\n', '-'*80)
             
             for locus in range(self.args.num_loci):
+                print(self.w)
                 # load model and optimizer for cur locus
                 self.model, self.variational_opt = self.model_list[locus]
                 self.model.train()
                 self.model.update_pi(self.w)
                 
                 for iter in range(self.args.num_steps):
-                    # update SparsePro model parameterrs
+                    # update SparsePro model parameters
                     self.variational_opt.zero_grad()
                     loss = self.model()
                     loss.backward()
                     self.variational_opt.step()
                     
                     # update weight vector
+                    self.weight_opt.zero_grad()
                     loss = self.model()
                     loss.backward()
                     if self.args.weight_opt == 'binary':
@@ -104,12 +122,16 @@ class Trainer(object):
             
             # update pred and true for this locus
             pred[prev:prev + self.model.p] = multivariate_or
-            if locus in self.cs_idx:
-                true_idx = torch.tensor(self.cs_idx[locus])
+            if locus in self.true_cs:
+                true_idx = torch.tensor(self.true_cs[locus])
                 true[prev + true_idx] = 1
             prev += self.model.p
 
+        print(self.w, self.true_w)
         self.plot_auprc(true.detach().numpy(), pred.detach().numpy())
+        
+    def plot_elbo(self):
+        pass
 
     def plot_auprc(self, true, pred):
         '''Plot Area Under Precision Recall Curve (AUPRC)

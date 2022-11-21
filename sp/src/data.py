@@ -6,19 +6,6 @@ class Data_Loader:
     def __init__(self, data_dir):
         self.data_dir = data_dir
         
-        # self.p = 1229 # num SNPs
-        # self.n = 322 # num individuals
-
-        # # load data
-        # X = np.load(os.path.join(data_dir, 'genotype.npy'))
-        # y = np.load(os.path.join(data_dir, 'simulated_phenotype.npy'))
-        # snp_classification = np.load(os.path.join(data_dir, 'snp_classification.npy'))
-
-        # # convert to tensors
-        # self.X = torch.tensor(X, dtype=torch.float32)
-        # self.y = torch.tensor(y, dtype=torch.float32)
-        # self.snp_classification = torch.tensor(snp_classification, dtype=torch.float32)
-        
     def global_params(self):
         data = np.load(os.path.join(self.data_dir, 'global_params.npz'), allow_pickle=True)
         w = torch.tensor(data['weight'], dtype=torch.float32)
