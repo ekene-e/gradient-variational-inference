@@ -12,6 +12,7 @@ import torch.nn as nn
 from model import SparsePro
 from data import Data_Loader
 from cavi_opt import CAVI
+from binary_opt import Binary
 
 class Trainer(object):
     def __init__(self, args):
@@ -21,10 +22,13 @@ class Trainer(object):
         self.w, self.cs_idx = self.data_loader.global_params()
         print(self.cs_idx)
         
-        self.weight_vec_optimizer = torch.optim.Adam([self.w], 
-                                            maximize=True,
-                                            lr=args.lr,
-                                            weight_decay=args.weight_decay)
+        if self.args.weight_opt == 'adam':
+            self.weight_opt = torch.optim.Adam([self.w], 
+                                                maximize=True,
+                                                lr=args.lr,
+                                                weight_decay=args.weight_decay)
+        elif self.args.weight_opt == 'binary':
+            self.weight_opt = Binary([self.w])
         
         self.model_list = self.init_models()
 
@@ -36,13 +40,13 @@ class Trainer(object):
             X, y, A, n, p = self.data_loader.locus_data(locus) # load locus data
             model = SparsePro(X, y, p, n, self.w, A, self.args.max_num_effects)
             
-            if self.args.opt == 'adam':
+            if self.args.variational_opt == 'adam':
                 opt = torch.optim.Adam(
                     model.parameters(),
                     maximize=True,
                     lr=self.args.lr,
                     weight_decay=self.args.weight_decay)
-            elif self.args.opt == 'cavi':
+            elif self.args.variational_opt == 'cavi':
                 opt = CAVI(model.parameters(), model)
                 
             model_list.append((model, opt))
@@ -50,29 +54,29 @@ class Trainer(object):
         return model_list
     
     def train(self):
-
         prev = torch.tensor([0])
         for epoch in range(self.args.num_epochs):
             if self.args.verbose and epoch == 0: print('ELBO\n', '-'*80)
             
             for locus in range(self.args.num_loci):
                 # load model and optimizer for cur locus
-                self.model, self.sp_optimizer = self.model_list[locus]
+                self.model, self.variational_opt = self.model_list[locus]
                 self.model.train()
                 self.model.update_pi(self.w)
                 
                 for iter in range(self.args.num_steps):
-                
                     # update SparsePro model parameterrs
-                    self.sp_optimizer.zero_grad()
+                    self.variational_opt.zero_grad()
                     loss = self.model()
                     loss.backward()
-                    self.sp_optimizer.step()
+                    self.variational_opt.step()
                     
                     # update weight vector
                     loss = self.model()
                     loss.backward()
-                    self.weight_vec_optimizer.step()
+                    if self.args.weight_opt == 'binary':
+                        self.weight_opt.update_model(self.model)
+                    self.weight_opt.step()
 
                     # print loss
                     if self.args.verbose and epoch % 3 == 0 and iter == self.args.num_steps-1: 
@@ -125,7 +129,8 @@ class Trainer(object):
         
         plot_dir = 'res/plots' # relative path to directory of saved plots
         filename = ('AUPRC'
-            f'___opt-{self.args.opt}'
+            f'___opt-{self.args.variational_opt}'
+            f'___opt-{self.args.weight_opt}'
             f'_lr-{self.args.lr}'
             f'_max-iter-{self.args.num_epochs}'
             f'_eps-{self.args.eps}'

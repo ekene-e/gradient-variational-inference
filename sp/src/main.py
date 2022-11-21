@@ -14,7 +14,8 @@ if __name__ == '__main__':
     parser.add_argument('--max-num-effects', type=int, default=9)
 
     # Training Argument
-    parser.add_argument('--opt', choices=['adam', 'cavi'], required=True)
+    parser.add_argument('--variational-opt', choices=['adam', 'cavi'], required=True)
+    parser.add_argument('--weight-opt', choices=['adam', 'binary'], required=True)
     parser.add_argument('--lr', type=float, default=1e-1)
     parser.add_argument('--num-epochs', type=int, default=500)
     parser.add_argument('--num-steps', type=int, default=30)
