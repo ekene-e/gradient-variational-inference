@@ -22,19 +22,21 @@ class Trainer(object):
         # true annotation weight vector and true causal SNPs
         self.true_w, self.true_cs = self.data_loader.global_params()
         self.num_annotations = self.true_w.shape[0]
-        # annotation weight vector to be learned as a parameter
-        self.w = self.init_weight_vec()
+        self.w = None # assume no annotation weight vector by default
         
-        print(self.w)
+        # if using functional annotations, learn annotation weight vector
+        if self.args.annotations:
+            # annotation weight vector to be learned as a parameter
+            self.w = self.init_weight_vec()
         
-        # optimizer for annotation weight vector w
-        if self.args.weight_opt == 'adam':
-            self.weight_opt = torch.optim.Adam([self.w], 
-                                                maximize=True,
-                                                lr=args.lr,
-                                                weight_decay=args.weight_decay)
-        elif self.args.weight_opt == 'binary':
-            self.weight_opt = Binary([self.w])
+            # optimizer for annotation weight vector w
+            if self.args.weight_opt == 'adam':
+                self.weight_opt = torch.optim.Adam([self.w], 
+                                                    maximize=True,
+                                                    lr=args.lr,
+                                                    weight_decay=args.weight_decay)
+            elif self.args.weight_opt == 'binary':
+                self.weight_opt = Binary([self.w])
         
         # list of (SparsePro model, SparsePro optimizer) tuples
         self.model_list = self.init_models()
@@ -54,7 +56,7 @@ class Trainer(object):
         
         for locus in range(self.args.num_loci):
             X, y, A, n, p = self.data_loader.locus_data(locus) # load locus data
-            model = SparsePro(X, y, p, n, self.w, A, self.args.max_num_effects)
+            model = SparsePro(X, y, p, n, A, self.w, self.args.max_num_effects)
             
             if self.args.variational_opt == 'adam':
                 opt = torch.optim.Adam(
@@ -71,33 +73,37 @@ class Trainer(object):
     
     def train(self):
         prev = torch.tensor([0])
+        print(self.w)
         for epoch in range(self.args.num_epochs):
-            if self.args.verbose and epoch == 0: print('ELBO\n', '-'*80)
+            if self.args.verbose and epoch == 0: print('\t\t\t\tMODEL TRAINING\n', '-'*80)
+            print('-'*36, f'EPOCH {epoch}', '-'*36)
+            if epoch % 5 == 0: print(self.w, '\n')
             
             for locus in range(self.args.num_loci):
-                print(self.w)
                 # load model and optimizer for cur locus
                 self.model, self.variational_opt = self.model_list[locus]
                 self.model.train()
-                self.model.update_pi(self.w)
+                if self.args.annotations: self.model.update_pi(self.w)
                 
                 for iter in range(self.args.num_steps):
                     # update SparsePro model parameters
                     self.variational_opt.zero_grad()
                     loss = self.model()
-                    loss.backward()
+                    loss.backward(retain_graph=True)
                     self.variational_opt.step()
                     
-                    # update weight vector
-                    self.weight_opt.zero_grad()
-                    loss = self.model()
-                    loss.backward()
-                    if self.args.weight_opt == 'binary':
-                        self.weight_opt.update_model(self.model)
-                    self.weight_opt.step()
+                    # if learning annotation weight vector
+                    if self.args.annotations:
+                        # update weight vector
+                        self.weight_opt.zero_grad()
+                        loss = self.model()
+                        loss.backward(retain_graph=True)
+                        if self.args.weight_opt == 'binary':
+                            self.weight_opt.update_model(self.model)
+                        self.weight_opt.step()
 
                     # print loss
-                    if self.args.verbose and epoch % 3 == 0 and iter == self.args.num_steps-1: 
+                    if self.args.verbose and epoch % 5 == 0 and iter == self.args.num_steps-1: 
                         print(f'Locus {locus}: ', loss.item())
                     
             # check convergence
