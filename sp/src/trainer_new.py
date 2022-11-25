@@ -1,18 +1,20 @@
 import os
 from tqdm import trange
 
-import matplotlib.pyplot as plt
 import numpy as np
 import torch
+import seaborn as sns
 
+import matplotlib.pyplot as plt
 from sklearn.metrics import PrecisionRecallDisplay 
 import torch.nn as nn
-
 
 from model import SparsePro
 from data import Data_Loader
 from cavi_opt import CAVI
 from binary_opt import Binary
+
+sns.set_theme()
 
 class Trainer(object):
     def __init__(self, args):
@@ -21,6 +23,7 @@ class Trainer(object):
         
         # true annotation weight vector and true causal SNPs
         self.true_w, self.true_cs = self.data_loader.global_params()
+        print(self.true_cs)
         self.num_annotations = self.true_w.shape[0]
         self.w = None # assume no annotation weight vector by default
         
@@ -72,8 +75,7 @@ class Trainer(object):
         return model_list
     
     def train(self):
-        prev = torch.tensor([0])
-        print(self.w)
+        self.elbo = [[] for _ in range(self.args.num_loci)]
         for epoch in range(self.args.num_epochs):
             if self.args.verbose and epoch == 0: print('\t\t\t\tMODEL TRAINING\n', '-'*80)
             print('-'*36, f'EPOCH {epoch}', '-'*36)
@@ -103,14 +105,18 @@ class Trainer(object):
                         self.weight_opt.step()
 
                     # print loss
+                    self.elbo[locus].append(loss.item())
                     if self.args.verbose and epoch % 5 == 0 and iter == self.args.num_steps-1: 
-                        print(f'Locus {locus}: ', loss.item())
+                        print(f'Locus {locus}: ', self.elbo[locus][-1])
                     
             # check convergence
-            if np.abs(loss.item() - prev.item()) < self.args.eps: break
-            prev = loss
+            if np.abs(self.elbo[locus][-1] - self.elbo[locus][-2]) < self.args.eps: break
 
     def eval(self):
+        print('\n', '-'*35, f'EVALUATION', '-'*35)
+        print(self.true_cs)
+        self.plot_elbo()
+        
         pred = torch.zeros((self.total_num_SNPs))
         true = torch.zeros((self.total_num_SNPs))
         
@@ -125,6 +131,11 @@ class Trainer(object):
             
             # compute multivariate-or function using log-sum-exp trick
             multivariate_or = 1 - torch.exp(torch.sum(torch.log(1 - gamma), dim=1))
+            val, idx = torch.topk(multivariate_or, 5)
+            print(f'Locus {locus}:\t', idx.detach().numpy(), 
+                  '  \t\t(SNP Index)', '\n\t\t', 
+                  np.around(val.detach().numpy(), decimals=3),
+                  '\t(Probability of SNP Causality)')
             
             # update pred and true for this locus
             pred[prev:prev + self.model.p] = multivariate_or
@@ -133,12 +144,131 @@ class Trainer(object):
                 true[prev + true_idx] = 1
             prev += self.model.p
 
-        print(self.w, self.true_w)
         self.plot_auprc(true.detach().numpy(), pred.detach().numpy())
+        self.plot_hist1(pred.detach().numpy())
+        self.plot_hist2(pred.detach().numpy())
+        self.plot_hist3(pred.detach().numpy())        
         
     def plot_elbo(self):
-        pass
+        # plotting
+        for locus in range(self.args.num_loci):
+            plt.plot(self.elbo[locus], label=f'L{locus}')
+        plt.legend()
+        plt.xlabel('Training Iteration')
+        plt.ylabel('ELBO')
+        
+        plot_dir = 'res/elbo' # relative path to directory of ELBO plots
+        filename = ('ELBO'
+            f'__annotations-{self.args.annotations}'
+            f'_variational-opt-{self.args.variational_opt}'
+            f'_weight-opt-{self.args.weight_opt}'
+            f'_lr-{self.args.lr}'
+            f'_num-epochs-{self.args.num_epochs}'
+            f'_num-steps-{self.args.num_steps}'
+            f'_eps-{self.args.eps}'
+            f'_seed-{self.args.seed}'
+            '.png'
+        )
+        
+        plt.savefig(os.path.join(plot_dir, filename))  # save ELBO plot
+        if self.args.verbose: plt.show() # show elbo plot
 
+    def plot_hist1(self, pred):
+        idx = 0
+        pred_list, labels_list = [], []
+        for locus in range(self.args.num_loci):
+            self.model, _ = self.model_list[locus]
+            cur_pred = pred[idx : idx + self.model.p + 1]
+            
+            pred_list.append(cur_pred)
+            labels_list.append(f'L{locus}')
+            idx += self.model.p
+            
+        plt.hist(pred_list, bins=100, histtype='barstacked', range=(0,1), label=labels_list, lw=0)
+        plt.xlabel('Probability SNP Causes (at Least One) Effect')
+        plt.ylabel('Frequency')
+        plt.legend()
+        
+        plot_dir = 'res/histogram' # relative path to directory of hist plots
+        filename = ('hist1'
+            f'__annotations-{self.args.annotations}'
+            f'_variational-opt-{self.args.variational_opt}'
+            f'_weight-opt-{self.args.weight_opt}'
+            f'_lr-{self.args.lr}'
+            f'_num-epochs-{self.args.num_epochs}'
+            f'_num-steps-{self.args.num_steps}'
+            f'_eps-{self.args.eps}'
+            f'_seed-{self.args.seed}'
+            '.png'
+        )
+        
+        plt.savefig(os.path.join(plot_dir, filename))  # save ELBO plot
+        if self.args.verbose: plt.show() # show elbo plot
+        
+    def plot_hist2(self, pred):
+        idx = 0
+        pred_list, labels_list = [], []
+        for locus in range(self.args.num_loci):
+            self.model, _ = self.model_list[locus]
+            cur_pred = pred[idx : idx + self.model.p + 1]
+            
+            pred_list.append(cur_pred)
+            labels_list.append(f'L{locus}')
+            idx += self.model.p
+            
+        plt.hist(pred_list, bins=100, histtype='barstacked', range=(0,0.15), label=labels_list, lw=0)
+        plt.xlabel('Probability SNP Causes (at Least One) Effect')
+        plt.ylabel('Frequency')
+        plt.legend()
+        
+        plot_dir = 'res/histogram' # relative path to directory of hist plots
+        filename = ('hist2'
+            f'__annotations-{self.args.annotations}'
+            f'_variational-opt-{self.args.variational_opt}'
+            f'_weight-opt-{self.args.weight_opt}'
+            f'_lr-{self.args.lr}'
+            f'_num-epochs-{self.args.num_epochs}'
+            f'_num-steps-{self.args.num_steps}'
+            f'_eps-{self.args.eps}'
+            f'_seed-{self.args.seed}'
+            '.png'
+        )
+        
+        plt.savefig(os.path.join(plot_dir, filename))  # save ELBO plot
+        if self.args.verbose: plt.show() # show elbo plot
+        
+    def plot_hist3(self, pred):
+        idx = 0
+        pred_list, labels_list = [], []
+        for locus in range(self.args.num_loci):
+            self.model, _ = self.model_list[locus]
+            cur_pred = pred[idx : idx + self.model.p + 1]
+            
+            pred_list.append(cur_pred)
+            labels_list.append(f'L{locus}')
+            idx += self.model.p
+            
+        plt.hist(pred_list, bins=100, histtype='barstacked', range=(0.9,1), label=labels_list, lw=0)
+        plt.xlabel('Probability SNP Causes (at Least One) Effect')
+        plt.ylabel('Frequency')
+        plt.legend()
+        
+        plot_dir = 'res/histogram' # relative path to directory of hist plots
+        filename = ('hist3'
+            f'__annotations-{self.args.annotations}'
+            f'_variational-opt-{self.args.variational_opt}'
+            f'_weight-opt-{self.args.weight_opt}'
+            f'_lr-{self.args.lr}'
+            f'_num-epochs-{self.args.num_epochs}'
+            f'_num-steps-{self.args.num_steps}'
+            f'_eps-{self.args.eps}'
+            f'_seed-{self.args.seed}'
+            '.png'
+        )
+        
+        plt.savefig(os.path.join(plot_dir, filename))  # save ELBO plot
+        if self.args.verbose: plt.show() # show elbo plot
+        
     def plot_auprc(self, true, pred):
         '''Plot Area Under Precision Recall Curve (AUPRC)
 
@@ -155,19 +285,18 @@ class Trainer(object):
 
         disp = PrecisionRecallDisplay.from_predictions(true, pred)
         
-        plot_dir = 'res/plots' # relative path to directory of saved plots
+        plot_dir = 'res/auprc' # relative path to directory of AUPRC plots
         filename = ('AUPRC'
-            f'___opt-{self.args.variational_opt}'
-            f'___opt-{self.args.weight_opt}'
+            f'__annotations-{self.args.annotations}'
+            f'_variational-opt-{self.args.variational_opt}'
+            f'_weight-opt-{self.args.weight_opt}'
             f'_lr-{self.args.lr}'
-            f'_max-iter-{self.args.num_epochs}'
+            f'_num-epochs-{self.args.num_epochs}'
+            f'_num-steps-{self.args.num_steps}'
             f'_eps-{self.args.eps}'
+            f'_seed-{self.args.seed}'
             '.png'
         )
 
-        # save AUPRC plot
-        plt.savefig(os.path.join(plot_dir, filename))
-
-        # show AUPRC plot
-        if self.args.verbose:
-            plt.show()
+        plt.savefig(os.path.join(plot_dir, filename))  # save AUPRC plot
+        if self.args.verbose: plt.show()  # show AUPRC plot

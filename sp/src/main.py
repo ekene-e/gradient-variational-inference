@@ -10,7 +10,7 @@ if __name__ == '__main__':
     parser.add_argument('--save-dir', type=str, default='res')
 
     # Model Argument
-    parser.add_argument('--max-num-effects', type=int, default=9)
+    parser.add_argument('--max-num-effects', type=int, default=10)
     parser.add_argument('--annotations', action='store_true')
 
     # Training Argument

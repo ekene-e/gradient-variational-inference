@@ -38,7 +38,7 @@ class SparsePro(nn.Module):
 
         # priors
         self.y_tau = 1.0 / (self.y_var * (1-self.h2)) # [1 x 1]
-        self.prior_pi = torch.tensor(1/self.p).repeat(self.p) # [num SNPs x 1]
+        self.prior_pi = (1/self.p).repeat(self.p) # [num SNPs x 1]
         self.beta_prior_tau = torch.tile(torch.tensor(
             (1.0 / self.b_var * np.array([k+1 for k in range(self.k)])), 
             dtype=torch.float32), (self.p, 1))
