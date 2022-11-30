@@ -51,16 +51,18 @@ class Trainer(object):
         mean = torch.zeros(self.num_annotations)
         std = torch.eye(self.num_annotations)
         w = torch.normal(mean=mean, std=std, generator=self.rng).diag()
-        return nn.Parameter(w)
+        return nn.Parameter(w * 0)
 
     def init_models(self):
         model_list = []
         self.total_num_SNPs = 0
         
         for locus in range(self.args.num_loci):
+            # initialize SprarsePro model
             X, y, A, n, p = self.data_loader.locus_data(locus) # load locus data
             model = SparsePro(X, y, p, n, A, self.w, self.args.max_num_effects)
             
+            # intitialize variational optimizer for SprasePro latent variables
             if self.args.variational_opt == 'adam':
                 opt = torch.optim.Adam(
                     model.parameters(),
@@ -77,20 +79,23 @@ class Trainer(object):
     def train(self):
         self.elbo = [[] for _ in range(self.args.num_loci)]
         for epoch in range(self.args.num_epochs):
+            # printing
             if self.args.verbose and epoch == 0: print('\t\t\t\tMODEL TRAINING\n', '-'*80)
             print('-'*36, f'EPOCH {epoch}', '-'*36)
             if epoch % 5 == 0: print(self.w, '\n')
             
+            # iterate over all loci
             for locus in range(self.args.num_loci):
                 # load model and optimizer for cur locus
                 self.model, self.variational_opt = self.model_list[locus]
                 self.model.train()
                 if self.args.annotations: self.model.update_pi(self.w)
                 
+                # take a few optimization steps
                 for iter in range(self.args.num_steps):
-                    # update SparsePro model parameters
+                    # update SparsePro's variational parameters
                     self.variational_opt.zero_grad()
-                    loss = self.model()
+                    loss = self.model() # compute ELBO
                     loss.backward(retain_graph=True)
                     self.variational_opt.step()
                     
@@ -98,7 +103,7 @@ class Trainer(object):
                     if self.args.annotations:
                         # update weight vector
                         self.weight_opt.zero_grad()
-                        loss = self.model()
+                        loss = self.model() # compute updated ELBO
                         loss.backward(retain_graph=True)
                         if self.args.weight_opt == 'binary':
                             self.weight_opt.update_model(self.model)
@@ -144,10 +149,17 @@ class Trainer(object):
                 true[prev + true_idx] = 1
             prev += self.model.p
 
+        # plotting
         self.plot_auprc(true.detach().numpy(), pred.detach().numpy())
         self.plot_hist1(pred.detach().numpy())
         self.plot_hist2(pred.detach().numpy())
-        self.plot_hist3(pred.detach().numpy())        
+        self.plot_hist3(pred.detach().numpy())       
+        
+        
+        # printing
+        print('\nANNOTATION WEIGHT VECTOR:')
+        print('True W:\t', self.true_w)
+        print('Learned W:\t', self.w) 
         
     def plot_elbo(self):
         # plotting

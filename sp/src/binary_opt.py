@@ -10,9 +10,7 @@ class Binary(Optimizer):
         # annotation matrix A and variational parameter gamma 
         self.A = model.annotations # [num_snp x num_annotations]
         self.gamma = model.gamma() # [num_snp x 1]
-        
-        #assert(torch.all(self.A == 0.0) or torch.all(self.A == 1.0)) # TODO: fix assertion
-        
+                
         # hyperparameters
         self.k = model.k # num causal effects
         self.num_snp = self.A.shape[0] # num of SNPs (in this locus)
