@@ -20,7 +20,6 @@ class SparsePro(nn.Module):
         # data
         self.X = X
         self.y = y
-        self.weight_vec = w
         self.annotations = A
         
         self.ytX = self.y @ self.X # compute once
@@ -45,13 +44,17 @@ class SparsePro(nn.Module):
         self.beta_post_tau = torch.tile(self.XX.reshape(-1, 1), (1, self.k)) * (
             self.y_tau) + self.beta_prior_tau
         
+        # ensure no NaN errors
         assert(self.y_var != 0)
         assert(torch.all(self.beta_post_tau > 0))
 
         # latent variables
         beta_mu, u = self.init_variational_params()
-        self.u = nn.Parameter(u)
-        self.beta_mu = nn.Parameter(beta_mu)
+        self.u = nn.Parameter(u) # [p x k]
+        self.beta_mu = nn.Parameter(beta_mu) # [p x k]
+        
+        # annotation weight vector
+        self.weight_vec = w # if using functional annotations, this is 
 
     def forward(self):
         ''' Compute the ELBO
@@ -97,11 +100,16 @@ class SparsePro(nn.Module):
         return gamma
     
     def update_pi(self, w):
-        """ update prior causal SNP vector pi with new weight vector w
+        """ with new weight vector w update prior causal SNP vector pi and u
+        
+        Recall pi = softmax(u) and u = A @ w. Furthermore, we actually optimize
+        over u to do unconstrainted optimization. Thus, when getting a new 
+        weight vector w, we update both u and pi.
 
         Args:
             w ([num_annotations]): vector that weights functional annotations
         """
+       
         self.prior_pi = self.softmax(self.annotations @ w)
 
     def init_variational_params(self):

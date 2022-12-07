@@ -77,7 +77,9 @@ class Trainer(object):
         return model_list
     
     def train(self):
-        self.elbo = [[] for _ in range(self.args.num_loci)]
+        self.elbo = [[] for _ in range(self.args.num_loci)] # elbo history
+        
+        # iterate over epochs
         for epoch in range(self.args.num_epochs):
             # printing
             if self.args.verbose and epoch == 0: print('\t\t\t\tMODEL TRAINING\n', '-'*80)
@@ -93,12 +95,12 @@ class Trainer(object):
                 
                 # take a few optimization steps
                 for iter in range(self.args.num_steps):
-                    # update SparsePro's variational parameters
+                    # update variational parameters
                     self.variational_opt.zero_grad()
                     loss = self.model() # compute ELBO
                     loss.backward(retain_graph=True)
                     self.variational_opt.step()
-                    
+                                        
                     # if learning annotation weight vector
                     if self.args.annotations:
                         # update weight vector
@@ -260,7 +262,7 @@ class Trainer(object):
             labels_list.append(f'L{locus}')
             idx += self.model.p
             
-        plt.hist(pred_list, bins=100, histtype='barstacked', range=(0.9,1), label=labels_list, lw=0)
+        plt.hist(pred_list, bins=100, histtype='barstacked', range=(0.2,1), label=labels_list, lw=0)
         plt.xlabel('Probability SNP Causes (at Least One) Effect')
         plt.ylabel('Frequency')
         plt.legend()
