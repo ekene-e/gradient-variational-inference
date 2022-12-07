@@ -24,7 +24,7 @@ if __name__ == '__main__':
     parser.add_argument('--weight-decay', type=float, default=5e-3)
 
     # System Argument
-    parser.add_argument('--seed', type=int, default=1)
+    parser.add_argument('--seed', type=int, default=2)
     parser.add_argument('--verbose', action='store_true')
     
     # Dataset Argument
