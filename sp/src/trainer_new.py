@@ -59,6 +59,7 @@ class Trainer(object):
         
         for locus in range(self.args.num_loci):
             # initialize SprarsePro model
+            print(f'Model {locus}')
             X, y, A, n, p = self.data_loader.locus_data(locus) # load locus data
             model = SparsePro(X, y, p, n, A, self.w, self.args.max_num_effects)
             

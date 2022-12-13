@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+
 class SparsePro(nn.Module):
     def __init__(
         self,
@@ -16,6 +17,9 @@ class SparsePro(nn.Module):
     ):
 
         super(SparsePro, self).__init__()
+        
+        # temporary
+        self.first_pass = True
 
         # data
         self.X = X
@@ -81,6 +85,7 @@ class SparsePro(nn.Module):
             torch.log(self.gamma()[self.gamma() != 0])).sum()
         mkl = betaterm1 + gammaterm1 - gammaterm2
         elbo = ll + mkl
+            
         return elbo
 
     def gamma(self):
@@ -144,5 +149,56 @@ class SparsePro(nn.Module):
                         + torch.log(self.prior_pi.t()) 
                         + 0.5 * beta_mu[:,k]**2 * self.beta_post_tau[:,k])
             gamma[:,k] = self.softmax(u[:,k])
+            
+            if self.first_pass and (torch.any(torch.isnan(u[:,k]) == True) 
+                                    or torch.any(torch.isnan(beta_mu[:,k]) == True)):
+            
+                print(k, torch.any(torch.isnan(u[:,k]) == True), 
+                      torch.any(torch.isnan(beta_mu[:,k]) == True)) # k, True, True
+                
+                # TODO if beta_mu[:,k] has some NaN values, where do this values come from?
+                print(torch.count_nonzero(torch.isnan(beta_mu[:,k]) == True).item(), 'NaN values in beta_mu[:,k]')
+                # print(torch.any(torch.isnan(self.ytX) == True)) # False
+                # print(torch.any(torch.isnan(beta_all_k) == True)) # True
+                # print(torch.any(torch.isnan(self.XtX) == True)) # False
+                # print(torch.any(torch.isnan(self.beta_post_tau[:,k]) == True)) # False
+                # print(torch.any(torch.isnan(self.y_tau) == True)) # False
+                
+                return beta_mu, u
+            
+            # if torch.any(torch.isnan(u) == True) and self.first_pass:
+            #     self.investigate()
+            #     self.first_pass = False
+    
+        # occasionally u and beta mu have NaN values (together!)
+        # where do these come from and how do we fix it?
+        # u inherits its NaN values from beta mu --> beta mu is the problem 
+        if self.first_pass:
+            if torch.any(torch.isnan(u) == True) and torch.any(torch.isnan(beta_mu) == True):
+                print('NaNs in u and beta_mu')
+        self.first_pass = False
+            
+        return beta_mu, u
+    
+    
+    def investigate(self):
+        
+        gamma = torch.zeros((self.p, self.k))
+        beta_mu = torch.zeros((self.p, self.k))
+        u = torch.zeros((self.p, self.k))
+
+        for k in range(self.k):
+            
+            idxall = [x for x in range(self.k)]
+            idxall.remove(k)
+            beta_all_k = (gamma[:,idxall] * beta_mu[:,idxall]).sum(axis=1)
+            beta_mu[:,k] = (self.ytX -torch.matmul(beta_all_k, self.XtX)) / (
+                            self.beta_post_tau[:,k] * self.y_tau)
+            u[:,k] = (-0.5*torch.log(self.beta_post_tau[:,k])
+                        + torch.log(self.prior_pi.t()) 
+                        + 0.5 * beta_mu[:,k]**2 * self.beta_post_tau[:,k])
+            gamma[:,k] = self.softmax(u[:,k])
+            
+        print(torch.any(torch.isnan(u) == True))
             
         return beta_mu, u
