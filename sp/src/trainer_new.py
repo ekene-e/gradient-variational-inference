@@ -59,7 +59,6 @@ class Trainer(object):
         
         for locus in range(self.args.num_loci):
             # initialize SprarsePro model
-            print(f'Model {locus}')
             X, y, A, n, p = self.data_loader.locus_data(locus) # load locus data
             model = SparsePro(X, y, p, n, A, self.w, self.args.max_num_effects)
             
@@ -151,7 +150,7 @@ class Trainer(object):
                 true_idx = torch.tensor(self.true_cs[locus])
                 true[prev + true_idx] = 1
             prev += self.model.p
-
+            
         # plotting
         self.plot_auprc(true.detach().numpy(), pred.detach().numpy())
         self.plot_hist1(pred.detach().numpy())
@@ -298,6 +297,12 @@ class Trainer(object):
             predicted causal SNPs, obtained where gamma > causality_threshold
         '''
 
+        # TODO: delete this once have fixed NaN problem
+        # remove NaN values
+        idx = np.argwhere(np.isnan(pred) == False)
+        pred = pred[idx]
+        true = true[idx]
+        
         disp = PrecisionRecallDisplay.from_predictions(true, pred)
         
         plot_dir = 'res/auprc' # relative path to directory of AUPRC plots
