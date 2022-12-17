@@ -16,7 +16,7 @@ if __name__ == '__main__':
     # Training Argument
     parser.add_argument('--variational-opt', choices=['adam', 'cavi'], required=True)
     parser.add_argument('--weight-opt', choices=['adam', 'binary'], required=True)
-    parser.add_argument('--lr', type=float, default=1e-1)
+    parser.add_argument('--lr', type=float, default=1e-3)
     parser.add_argument('--num-epochs', type=int, default=500)
     parser.add_argument('--num-steps', type=int, default=30)
     parser.add_argument('--eps', type=float, default=1e-7,

@@ -28,3 +28,6 @@ class CAVI(Optimizer):
             beta_mu[:,k] = (self.ytX-torch.matmul(beta_all_k, self.XtX))/self.beta_post_tau[:,k] * self.y_tau
             u[:,k] = -0.5*torch.log(self.beta_post_tau[:,k]) + torch.log(self.prior_pi.t()) + 0.5 * beta_mu[:,k]**2 * self.beta_post_tau[:,k]
             gamma[:,k] = self.softmax(u[:,k])
+            
+        assert(beta_mu.isnan().any() == False)
+        assert(u.isnan().any() == False)

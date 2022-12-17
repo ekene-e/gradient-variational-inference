@@ -19,7 +19,7 @@ class SparsePro(nn.Module):
         super(SparsePro, self).__init__()
         
         # temporary
-        self.first_pass = True
+        self.first_pass = False
 
         # data
         self.X = X
@@ -58,7 +58,7 @@ class SparsePro(nn.Module):
         self.beta_mu = nn.Parameter(beta_mu) # [p x k]
         
         # annotation weight vector
-        self.weight_vec = w # if using functional annotations, this is 
+        self.weight_vec = w # if using functional annotations
 
     def forward(self):
         ''' Compute the ELBO
@@ -143,13 +143,16 @@ class SparsePro(nn.Module):
             idxall = [x for x in range(self.k)]
             idxall.remove(k)
             beta_all_k = (gamma[:,idxall] * beta_mu[:,idxall]).sum(axis=1)
-            beta_mu[:,k] = (self.ytX - torch.matmul(beta_all_k, self.XtX)) / (
+            # beta_mu[:,k] = (self.ytX - torch.matmul(beta_all_k, self.XtX)) / (
+            #                 self.beta_post_tau[:,k] * self.y_tau)
+            
+            beta_mu[:,k] = (self.ytX - np.matmul(beta_all_k.numpy(), self.XtX.numpy())) / (
                             self.beta_post_tau[:,k] * self.y_tau)
             
             if beta_mu[:,k].isnan().any() and self.first_pass:
                 # TODO if beta_mu[:,k] has some NaN values, where do this values come from?
                 print(torch.count_nonzero(torch.isnan(beta_mu[:,k])).item(), f'NaN values in beta_mu[:,k] for k={k}')
-                recompute = (self.ytX -torch.matmul(beta_all_k, self.XtX)) / (
+                recompute = (self.ytX - torch.matmul(beta_all_k, self.XtX)) / (
                             self.beta_post_tau[:,k] * self.y_tau)
                 print(torch.count_nonzero(torch.isnan(recompute)).item(), f'NaN values in beta_mu[:,k] for k={k}')
                 
@@ -175,5 +178,8 @@ class SparsePro(nn.Module):
         # u inherits its NaN values from beta mu --> beta mu is the problem 
         
         self.first_pass = False
-            
+        
+        assert(beta_mu.isnan().any() == False)
+        assert(u.isnan().any() == False)
+        
         return beta_mu, u

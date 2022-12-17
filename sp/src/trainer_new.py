@@ -30,7 +30,7 @@ class Trainer(object):
         # if using functional annotations, learn annotation weight vector
         if self.args.annotations:
             # annotation weight vector to be learned as a parameter
-            self.w = self.init_weight_vec()
+            self.w = nn.Parameter(torch.tensor([1.]).repeat(self.num_annotations))
         
             # optimizer for annotation weight vector w
             if self.args.weight_opt == 'adam':
@@ -55,8 +55,9 @@ class Trainer(object):
 
     def init_models(self):
         model_list = []
-        self.total_num_SNPs = 0
+        self.total_num_SNPs = 0 # used for plotting later
         
+        # loop over all loci
         for locus in range(self.args.num_loci):
             # initialize SprarsePro model
             X, y, A, n, p = self.data_loader.locus_data(locus) # load locus data
@@ -64,8 +65,10 @@ class Trainer(object):
             
             # intitialize variational optimizer for SprasePro latent variables
             if self.args.variational_opt == 'adam':
+                # weight vector w is a nn.Parameter() obj that is passed
+                # into SparsePro model, so model.parameters() includes it
                 opt = torch.optim.Adam(
-                    model.parameters(),
+                    model.parameters(), # TODO: don't optimize weight vector w here
                     maximize=True,
                     lr=self.args.lr,
                     weight_decay=self.args.weight_decay)
@@ -84,40 +87,64 @@ class Trainer(object):
             # printing
             if self.args.verbose and epoch == 0: print('\t\t\t\tMODEL TRAINING\n', '-'*80)
             print('-'*36, f'EPOCH {epoch}', '-'*36)
-            if epoch % 5 == 0: print(self.w, '\n')
+            if epoch % 1 == 0: print(self.w, '\n')
             
             # iterate over all loci
             for locus in range(self.args.num_loci):
                 # load model and optimizer for cur locus
                 self.model, self.variational_opt = self.model_list[locus]
                 self.model.train()
-                if self.args.annotations: self.model.update_pi(self.w)
+                
+                if self.args.annotations and self.args.weight_opt == 'adam': self.model.update_pi(self.w) # TODO: perhaps copy w and put a new copy in here? This way the computation graph starts afresh
                 
                 # take a few optimization steps
                 for iter in range(self.args.num_steps):
                     # update variational parameters
                     self.variational_opt.zero_grad()
                     loss = self.model() # compute ELBO
-                    loss.backward(retain_graph=True)
+                    loss.backward(retain_graph=True) # TODO: what happens if I stop this?
                     self.variational_opt.step()
                                         
-                    # if learning annotation weight vector
-                    if self.args.annotations:
+                    # learn annotation weight vector with adam opt
+                    if self.args.annotations and self.args.weight_opt == 'adam':
                         # update weight vector
                         self.weight_opt.zero_grad()
                         loss = self.model() # compute updated ELBO
                         loss.backward(retain_graph=True)
-                        if self.args.weight_opt == 'binary':
-                            self.weight_opt.update_model(self.model)
                         self.weight_opt.step()
 
                     # print loss
                     self.elbo[locus].append(loss.item())
-                    if self.args.verbose and epoch % 5 == 0 and iter == self.args.num_steps-1: 
-                        print(f'Locus {locus}: ', self.elbo[locus][-1])
-                    
+                    if self.args.verbose and epoch % 1 == 0 and iter == self.args.num_steps-1:
+                        if self.args.annotations and self.args.weight_opt == 'adam': 
+                            print(f'Locus {locus}: ', self.elbo[locus][-1], '\tW:\t', self.w.detach().numpy())
+                        else: 
+                            print(f'Locus {locus}: ', self.elbo[locus][-1])
             # check convergence
             if np.abs(self.elbo[locus][-1] - self.elbo[locus][-2]) < self.args.eps: break
+            
+        # learn annotation weight vector with binary opt
+        if self.args.annotations and self.args.weight_opt == 'binary':
+            # update weight vector
+            self.weight_opt.zero_grad()
+            loss = self.model() # compute updated ELBO
+            loss.backward(retain_graph=True)
+            self.weight_opt.update_model(self.model)
+            self.weight_opt.step()
+            
+            for locus in range(self.args.num_loci):
+                # load model and optimizer for cur locus
+                self.model, self.variational_opt = self.model_list[locus]
+                self.model.train()
+                
+                # update pi with newly computed annotation weight w
+                self.model.update_pi(self.w)
+                
+                # update variational parameters
+                self.variational_opt.zero_grad()
+                loss = self.model() # compute ELBO
+                loss.backward(retain_graph=True) # TODO: what happens if I stop this?
+                self.variational_opt.step()     
 
     def eval(self):
         print('\n', '-'*35, f'EVALUATION', '-'*35)
@@ -128,6 +155,7 @@ class Trainer(object):
         true = torch.zeros((self.total_num_SNPs))
         
         prev = 0
+        # iterate over loci
         for locus in range(self.args.num_loci):
             # load model and set to evaluation mode
             self.model, _ = self.model_list[locus]
@@ -139,10 +167,11 @@ class Trainer(object):
             # compute multivariate-or function using log-sum-exp trick
             multivariate_or = 1 - torch.exp(torch.sum(torch.log(1 - gamma), dim=1))
             val, idx = torch.topk(multivariate_or, 5)
-            print(f'Locus {locus}:\t', idx.detach().numpy(), 
-                  '  \t\t(SNP Index)', '\n\t\t', 
-                  np.around(val.detach().numpy(), decimals=3),
-                  '\t(Probability of SNP Causality)')
+            if self.args.verbose:
+                print(f'Locus {locus}:\t', idx.detach().numpy(), 
+                    '  \t\t(SNP Index)', '\n\t\t', 
+                    np.around(val.detach().numpy(), decimals=3),
+                    '\t(Probability of SNP Causality)')
             
             # update pred and true for this locus
             pred[prev:prev + self.model.p] = multivariate_or
@@ -153,15 +182,49 @@ class Trainer(object):
             
         # plotting
         self.plot_auprc(true.detach().numpy(), pred.detach().numpy())
-        self.plot_hist1(pred.detach().numpy())
-        self.plot_hist2(pred.detach().numpy())
-        self.plot_hist3(pred.detach().numpy())       
+        #self.plot_hist1(pred.detach().numpy())
+        #self.plot_hist2(pred.detach().numpy())
+        #self.plot_hist3(pred.detach().numpy())       
         
         
-        # printing
-        print('\nANNOTATION WEIGHT VECTOR:')
-        print('True W:\t', self.true_w)
-        print('Learned W:\t', self.w) 
+        # printing annotation weight vector
+        if self.args.annotations:
+            print('\nANNOTATION WEIGHT VECTOR:')
+            print('True W:\t', self.true_w)
+            print('Learned W:\t', self.w.detach().numpy()) 
+            
+    def causal_snp_prediction(self):
+        """ Probability that a SNP is causal in one or more effects
+        
+        Each SNP has a k-dimensional gamma vector that describes the prior 
+        probabilty that it is causal in each of k causal effects.
+        
+        Summarize this k-dimensional vector into a scalar with the 
+        multivariate-or function, computed with the log-sum-exp trick
+        
+        Returns:
+            pred [total_num_SNPs x 1]: learned probability that a SNP is causal in at least 1 effect
+        """
+
+        pred = torch.zeros((self.total_num_SNPs))
+
+        prev = 0
+        for locus in range(self.args.num_loci):
+            # load model and set to evaluation mode
+            self.model, _ = self.model_list[locus]
+            self.model.eval()
+
+            # extract gamma, the prior SNP causality vector 
+            gamma = self.model.gamma()
+            
+            # compute multivariate-or function using log-sum-exp trick
+            multivariate_or = 1 - torch.exp(torch.sum(torch.log(1 - gamma), dim=1))
+            
+            # store multivariate-or result and update prev idx
+            pred[prev: prev + self.model.p] = multivariate_or
+            prev += self.model.p
+        return pred
+            
         
     def plot_elbo(self):
         # plotting
