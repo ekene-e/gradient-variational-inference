@@ -10,8 +10,6 @@ from model import SparsePro
 from data import Data
 from cavi_opt import CAVI
 
-# testing setup of file
-
 class Trainer(object):
     def __init__(self, args):
         self.args = args
