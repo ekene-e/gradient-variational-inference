@@ -12,6 +12,6 @@ More specifically, we use PyTorch's auto-differentiation capibilities to **smart
 
 To run, first install all the requirments in the ```envs.yaml``` and ```requirments.txt``` files. Then nagivate to the directory ```sp``` and run
 
-``` python src/main.py --opt cavi ```
+``` python src/main.py --variational-opt [cavi|adam] --weight-opt [adam|binary] ```
 
 To see all the possible flags, add a ```-h``` flag
