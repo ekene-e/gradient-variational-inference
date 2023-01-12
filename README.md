@@ -10,7 +10,7 @@ More specifically, we use PyTorch's auto-differentiation capibilities to **smart
 
 # Installing and Running
 
-To run, first install all the requirments in the ```envs.yaml``` and ```requirments.txt``` files. Then nagivate to the directory ```sp``` and run the following
+To run, first install all the requirments in the ```envs.yaml``` and ```requirements.txt``` files. Then nagivate to the directory ```sp``` and run the following
 
 ``` python src/main.py --variational-opt [cavi|adam] --weight-opt [adam|binary] ```
 
