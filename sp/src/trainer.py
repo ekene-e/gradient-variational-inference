@@ -27,10 +27,10 @@ class Trainer(object):
         self.num_annotations = self.true_w.shape[0]
         self.w = None # assume no annotation weight vector by default
         
-        # if using functional annotations, learn annotation weight vector
+        # if using functional annotations
         if self.args.annotations:
             # annotation weight vector to be learned as a parameter
-            self.w = nn.Parameter(torch.tensor([1.]).repeat(self.num_annotations))
+            self.w = nn.Parameter(torch.tensor([0.]).repeat(self.num_annotations)) #TODO: confirm w should be initialized to 0 (was previously set to 1)
         
             # optimizer for annotation weight vector w
             if self.args.weight_opt == 'adam':
@@ -43,15 +43,6 @@ class Trainer(object):
         
         # list of (SparsePro model, SparsePro optimizer) tuples
         self.model_list = self.init_models()
-        
-    def init_weight_vec(self):
-        self.rng = torch.Generator()
-        self.rng.manual_seed(self.args.seed)
-        
-        mean = torch.zeros(self.num_annotations)
-        std = torch.eye(self.num_annotations)
-        w = torch.normal(mean=mean, std=std, generator=self.rng).diag()
-        return nn.Parameter(w * 0)
 
     def init_models(self):
         model_list = []
@@ -185,8 +176,7 @@ class Trainer(object):
         self.plot_hist1(pred.detach().numpy())
         self.plot_hist2(pred.detach().numpy())
         self.plot_hist3(pred.detach().numpy())       
-        
-        
+           
         # printing annotation weight vector
         if self.args.annotations:
             print('\nANNOTATION WEIGHT VECTOR:')
@@ -244,8 +234,7 @@ class Trainer(object):
             f'_eps-{self.args.eps}'
             f'_seed-{self.args.seed}'
             '.png'
-        )
-        
+        )   
         plt.savefig(os.path.join(plot_dir, filename))  # save ELBO plot
         if self.args.verbose: plt.show() # show elbo plot
 
@@ -276,8 +265,7 @@ class Trainer(object):
             f'_eps-{self.args.eps}'
             f'_seed-{self.args.seed}'
             '.png'
-        )
-        
+        )    
         plt.savefig(os.path.join(plot_dir, filename))  # save ELBO plot
         if self.args.verbose: plt.show() # show elbo plot
         
@@ -308,8 +296,7 @@ class Trainer(object):
             f'_eps-{self.args.eps}'
             f'_seed-{self.args.seed}'
             '.png'
-        )
-        
+        )   
         plt.savefig(os.path.join(plot_dir, filename))  # save ELBO plot
         if self.args.verbose: plt.show() # show elbo plot
         
@@ -341,7 +328,6 @@ class Trainer(object):
             f'_seed-{self.args.seed}'
             '.png'
         )
-        
         plt.savefig(os.path.join(plot_dir, filename))  # save ELBO plot
         if self.args.verbose: plt.show() # show elbo plot
         
