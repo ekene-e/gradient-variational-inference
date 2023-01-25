@@ -1,88 +1,356 @@
 import os
+from tqdm import trange
 
 import numpy as np
-from pandas import lreshape
 import torch
-from sklearn.metrics import PrecisionRecallDisplay 
+import seaborn as sns
+
 import matplotlib.pyplot as plt
+from sklearn.metrics import PrecisionRecallDisplay 
+import torch.nn as nn
 
 from model import SparsePro
-from data import Data
+from data import Data_Loader
 from cavi_opt import CAVI
+from binary_opt import Binary
+
+sns.set_theme()
+
+temp_path = '../../prob-ml/final-project/writeup/paper/images/sparsepro_star' # TODO: delete this
 
 class Trainer(object):
     def __init__(self, args):
         self.args = args
-        self.data = Data(args.data_dir)
+        self.data_loader = Data_Loader(args.data_dir)
+        
+        # true annotation weight vector and true causal SNPs
+        self.true_w, self.true_cs = self.data_loader.global_params()
+        print(self.true_cs)
+        self.num_annotations = self.true_w.shape[0]
+        self.w = None # assume no annotation weight vector by default
+        
+        # if using functional annotations, learn annotation weight vector
+        if self.args.annotations:
+            # annotation weight vector to be learned as a parameter
+            self.w = nn.Parameter(torch.tensor([1.]).repeat(self.num_annotations))
+        
+            # optimizer for annotation weight vector w
+            if self.args.weight_opt == 'adam':
+                self.weight_opt = torch.optim.Adam([self.w], 
+                                                    maximize=True,
+                                                    lr=args.lr,
+                                                    weight_decay=args.weight_decay)
+            elif self.args.weight_opt == 'binary':
+                self.weight_opt = Binary([self.w])
+        
+        # list of (SparsePro model, SparsePro optimizer) tuples
+        self.model_list = self.init_models()
+        
+    def init_weight_vec(self):
+        self.rng = torch.Generator()
+        self.rng.manual_seed(self.args.seed)
+        
+        mean = torch.zeros(self.num_annotations)
+        std = torch.eye(self.num_annotations)
+        w = torch.normal(mean=mean, std=std, generator=self.rng).diag()
+        return nn.Parameter(w * 0)
 
-        self.model = SparsePro(
-            self.data.X,
-            self.data.y,
-            self.data.p,
-            self.data.n,
-            args.max_num_effects)
-
-        if args.opt == 'adam':
-            self.optimizer = torch.optim.Adam(
-                self.model.parameters(),
-                maximize=True,
-                lr=args.lr,
-                weight_decay=args.weight_decay)
-        elif args.opt == 'cavi':
-            self.optimizer = CAVI(self.model.parameters(), self.model)
-
-    def train(self):
-        self.model.train()
-
-        prev = torch.tensor([0])
-        for epoch in range(self.args.max_iter):
-            self.optimizer.zero_grad()
-            loss = self.model()
-            loss.backward()
-            self.optimizer.step()
-
-            # print loss
-            temp = torch.argwhere(torch.any(
-                self.model.gamma() > self.args.causality_threshold, axis=1))
-            if self.args.verbose and epoch == 0: 
-                print('\tELBO\t\t\t\tPredicted Casual SNPs\n', '-'*80)
-            if self.args.verbose and epoch % 20 == 0: 
-                print(f'{loss:.4f}\t\t{temp.T.detach().numpy().reshape(-1)}')
+    def init_models(self):
+        model_list = []
+        self.total_num_SNPs = 0 # used for plotting later
+        
+        # loop over all loci
+        for locus in range(self.args.num_loci):
+            # initialize SprarsePro model
+            X, y, A, n, p = self.data_loader.locus_data(locus) # load locus data
+            model = SparsePro(X, y, p, n, A, self.w, self.args.max_num_effects)
             
-            # check convergence
-            if np.abs(loss.item() - prev.item()) < self.args.eps: break
-            prev = loss
+            # intitialize variational optimizer for SprasePro latent variables
+            if self.args.variational_opt == 'adam':
+                # weight vector w is a nn.Parameter() obj that is passed
+                # into SparsePro model, so model.parameters() includes it
+                opt = torch.optim.Adam(
+                    model.parameters(), # TODO: don't optimize weight vector w here
+                    maximize=True,
+                    lr=self.args.lr,
+                    weight_decay=self.args.weight_decay)
+            elif self.args.variational_opt == 'cavi':
+                opt = CAVI(model.parameters(), model)
+                
+            model_list.append((model, opt))
+            self.total_num_SNPs += p
+        return model_list
+    
+    def train(self):
+        self.elbo = [[] for _ in range(self.args.num_loci)] # elbo history
+        
+        # iterate over epochs
+        for epoch in range(self.args.num_epochs):
+            # printing
+            if self.args.verbose and epoch == 0: print('\t\t\t\tMODEL TRAINING\n', '-'*80)
+            print('-'*36, f'EPOCH {epoch}', '-'*36)
+            if epoch % 1 == 0: print(self.w, '\n')
+            
+            # iterate over all loci
+            for locus in range(self.args.num_loci):
+                # load model and optimizer for cur locus
+                self.model, self.variational_opt = self.model_list[locus]
+                self.model.train()
+                
+                if self.args.annotations and self.args.weight_opt == 'adam': self.model.update_pi(self.w) # TODO: perhaps copy w and put a new copy in here? This way the computation graph starts afresh
+                
+                # take a few optimization steps
+                for iter in range(self.args.num_steps):
+                    # update variational parameters
+                    self.variational_opt.zero_grad()
+                    loss = self.model() # compute ELBO
+                    loss.backward(retain_graph=True) # TODO: what happens if I stop this?
+                    self.variational_opt.step()
+                                        
+                    # learn annotation weight vector with adam opt
+                    if self.args.annotations and self.args.weight_opt == 'adam':
+                        # update weight vector
+                        self.weight_opt.zero_grad()
+                        loss = self.model() # compute updated ELBO
+                        loss.backward(retain_graph=True)
+                        self.weight_opt.step()
 
-        # print loss at convergence
-        if self.args.verbose:
-            print(f'At iter {epoch}, ELBO converged to {self.model():.4f}')
+                    # print loss
+                    self.elbo[locus].append(loss.item())
+                    if self.args.verbose and epoch % 1 == 0 and iter == self.args.num_steps-1:
+                        if self.args.annotations and self.args.weight_opt == 'adam': 
+                            print(f'Locus {locus}: ', self.elbo[locus][-1], '\tW: ', np.sum(self.w.detach().numpy()), '\t', self.w.detach().numpy(), '\t', self.w.grad)
+                        else: 
+                            print(f'Locus {locus}: ', self.elbo[locus][-1])
+            # check convergence
+            if np.abs(self.elbo[locus][-1] - self.elbo[locus][-2]) < self.args.eps: break
+            
+        # learn annotation weight vector with binary opt
+        if self.args.annotations and self.args.weight_opt == 'binary':
+            # update weight vector
+            self.weight_opt.zero_grad()
+            loss = self.model() # compute updated ELBO
+            loss.backward(retain_graph=True)
+            self.weight_opt.update_model(self.model)
+            self.weight_opt.step()
+            
+            for locus in range(self.args.num_loci):
+                # load model and optimizer for cur locus
+                self.model, self.variational_opt = self.model_list[locus]
+                self.model.train()
+                
+                # update pi with newly computed annotation weight w
+                self.model.update_pi(self.w)
+                
+                # update variational parameters
+                self.variational_opt.zero_grad()
+                loss = self.model() # compute ELBO
+                loss.backward(retain_graph=True) # TODO: what happens if I stop this?
+                self.variational_opt.step()     
 
     def eval(self):
-        self.model.eval()
+        print('\n', '-'*35, f'EVALUATION', '-'*35)
+        print(self.true_cs)
+        self.plot_elbo()
+        
+        pred = torch.zeros((self.total_num_SNPs))
+        true = torch.zeros((self.total_num_SNPs))
+        
+        prev = 0
+        # iterate over loci
+        for locus in range(self.args.num_loci):
+            # load model and set to evaluation mode
+            self.model, _ = self.model_list[locus]
+            self.model.eval()
 
-        # extract relevant variables
-        gamma = self.model.gamma()
-        causality_thresh = self.args.causality_threshold
+            # extract gamma, the prior SNP causality vector 
+            gamma = self.model.gamma()
+            
+            # compute multivariate-or function using log-sum-exp trick
+            multivariate_or = 1 - torch.exp(torch.sum(torch.log(1 - gamma), dim=1))
+            val, idx = torch.topk(multivariate_or, 5)
+            if self.args.verbose:
+                print(f'Locus {locus}:\t', idx.detach().numpy(), 
+                    '  \t\t(SNP Index)', '\n\t\t', 
+                    np.around(val.detach().numpy(), decimals=3),
+                    '\t(Probability of SNP Causality)')
+            
+            # update pred and true for this locus
+            pred[prev:prev + self.model.p] = multivariate_or
+            if locus in self.true_cs:
+                true_idx = torch.tensor(self.true_cs[locus])
+                true[prev + true_idx] = 1
+            prev += self.model.p
+            
+        # plotting
+        self.plot_auprc(true.detach().numpy(), pred.detach().numpy())
+        self.plot_hist1(pred.detach().numpy())
+        self.plot_hist2(pred.detach().numpy())
+        self.plot_hist3(pred.detach().numpy())       
+        
+        
+        # printing annotation weight vector
+        if self.args.annotations:
+            print('\nANNOTATION WEIGHT VECTOR:')
+            print('True W:\t', self.true_w)
+            print('Learned W:\t', self.w.detach().numpy()) 
+            
+    def causal_snp_prediction(self):
+        """ Probability that a SNP is causal in one or more effects
+        
+        Each SNP has a k-dimensional gamma vector that describes the prior 
+        probabilty that it is causal in each of k causal effects.
+        
+        Summarize this k-dimensional vector into a scalar with the 
+        multivariate-or function, computed with the log-sum-exp trick
+        
+        Returns:
+            pred [total_num_SNPs x 1]: learned probability that a SNP is causal in at least 1 effect
+        """
 
-        # predictions of casual SNPs with gamma values > causality_threshold
-        pred_idx = torch.argwhere(torch.any(gamma > causality_thresh, axis=1)).T
-        pred = torch.zeros(self.data.p)
-        pred[pred_idx] = 1
+        pred = torch.zeros((self.total_num_SNPs))
 
-        # true casual SNPs
-        true = self.data.snp_classification
-        true_idx = torch.argwhere(true).T
+        prev = 0
+        for locus in range(self.args.num_loci):
+            # load model and set to evaluation mode
+            self.model, _ = self.model_list[locus]
+            self.model.eval()
 
-        # print predicted and true causal SNPs
-        if self.args.verbose: 
-            print(
-                '\n\nPredicted Causal SNPs:\t', np.sort(pred_idx.detach().reshape(-1)),
-                '\nTrue Causal SNPs:\t', np.sort(true_idx.reshape(-1))
-            )
+            # extract gamma, the prior SNP causality vector 
+            gamma = self.model.gamma()
+            
+            # compute multivariate-or function using log-sum-exp trick
+            multivariate_or = 1 - torch.exp(torch.sum(torch.log(1 - gamma), dim=1))
+            
+            # store multivariate-or result and update prev idx
+            pred[prev: prev + self.model.p] = multivariate_or
+            prev += self.model.p
+        return pred
+        
+    def plot_elbo(self):
+        # plotting
+        for locus in range(self.args.num_loci):
+            plt.plot(self.elbo[locus], label=f'L{locus}')
+        #plt.legend()
+        plt.xlabel('Training Iteration')
+        plt.ylabel('ELBO')
+        
+        #plot_dir = 'res/elbo' # relative path to directory of ELBO plots
+        plot_dir = temp_path
+        filename = ('ELBO'
+            f'__annotations-{self.args.annotations}'
+            f'_variational-opt-{self.args.variational_opt}'
+            f'_weight-opt-{self.args.weight_opt}'
+            f'_lr-{self.args.lr}'
+            f'_num-epochs-{self.args.num_epochs}'
+            f'_num-steps-{self.args.num_steps}'
+            f'_eps-{self.args.eps}'
+            f'_seed-{self.args.seed}'
+            '.png'
+        )
+        
+        plt.savefig(os.path.join(plot_dir, filename))  # save ELBO plot
+        if self.args.verbose: plt.show() # show elbo plot
 
-        self.plot_auprc(true, gamma.detach().numpy())
-        #self.plot_auprc(true, pred)
-
+    def plot_hist1(self, pred):
+        idx = 0
+        pred_list, labels_list = [], []
+        for locus in range(self.args.num_loci):
+            self.model, _ = self.model_list[locus]
+            cur_pred = pred[idx : idx + self.model.p + 1]
+            
+            pred_list.append(cur_pred)
+            labels_list.append(f'L{locus}')
+            idx += self.model.p
+            
+        plt.hist(pred_list, bins=100, histtype='barstacked', range=(0,1), label=labels_list, lw=0)
+        plt.xlabel('Probability SNP Causes (at Least One) Effect')
+        plt.ylabel('Frequency')
+        #plt.legend()
+        
+        # plot_dir = 'res/histogram' # relative path to directory of hist plots
+        plot_dir = temp_path
+        filename = ('hist1'
+            f'__annotations-{self.args.annotations}'
+            f'_variational-opt-{self.args.variational_opt}'
+            f'_weight-opt-{self.args.weight_opt}'
+            f'_lr-{self.args.lr}'
+            f'_num-epochs-{self.args.num_epochs}'
+            f'_num-steps-{self.args.num_steps}'
+            f'_eps-{self.args.eps}'
+            f'_seed-{self.args.seed}'
+            '.png'
+        )
+        
+        plt.savefig(os.path.join(plot_dir, filename))  # save ELBO plot
+        if self.args.verbose: plt.show() # show elbo plot
+        
+    def plot_hist2(self, pred):
+        idx = 0
+        pred_list, labels_list = [], []
+        for locus in range(self.args.num_loci):
+            self.model, _ = self.model_list[locus]
+            cur_pred = pred[idx : idx + self.model.p + 1]
+            
+            pred_list.append(cur_pred)
+            labels_list.append(f'L{locus}')
+            idx += self.model.p
+            
+        plt.hist(pred_list, bins=100, histtype='barstacked', range=(0,0.15), label=labels_list, lw=0)
+        plt.xlabel('Probability SNP Causes (at Least One) Effect')
+        plt.ylabel('Frequency')
+        # plt.legend()
+        
+        # plot_dir = 'res/histogram' # relative path to directory of hist plots
+        plot_dir = temp_path
+        filename = ('hist2'
+            f'__annotations-{self.args.annotations}'
+            f'_variational-opt-{self.args.variational_opt}'
+            f'_weight-opt-{self.args.weight_opt}'
+            f'_lr-{self.args.lr}'
+            f'_num-epochs-{self.args.num_epochs}'
+            f'_num-steps-{self.args.num_steps}'
+            f'_eps-{self.args.eps}'
+            f'_seed-{self.args.seed}'
+            '.png'
+        )
+        
+        plt.savefig(os.path.join(plot_dir, filename))  # save ELBO plot
+        if self.args.verbose: plt.show() # show elbo plot
+        
+    def plot_hist3(self, pred):
+        idx = 0
+        pred_list, labels_list = [], []
+        for locus in range(self.args.num_loci):
+            self.model, _ = self.model_list[locus]
+            cur_pred = pred[idx : idx + self.model.p + 1]
+            
+            pred_list.append(cur_pred)
+            labels_list.append(f'L{locus}')
+            idx += self.model.p
+            
+        plt.hist(pred_list, bins=100, histtype='barstacked', range=(0.2,1), label=labels_list, lw=0)
+        plt.xlabel('Probability SNP Causes (at Least One) Effect')
+        plt.ylabel('Frequency')
+        # plt.legend()
+        
+        # plot_dir = 'res/histogram' # relative path to directory of hist plots
+        plot_dir = temp_path
+        filename = ('hist3'
+            f'__annotations-{self.args.annotations}'
+            f'_variational-opt-{self.args.variational_opt}'
+            f'_weight-opt-{self.args.weight_opt}'
+            f'_lr-{self.args.lr}'
+            f'_num-epochs-{self.args.num_epochs}'
+            f'_num-steps-{self.args.num_steps}'
+            f'_eps-{self.args.eps}'
+            f'_seed-{self.args.seed}'
+            '.png'
+        )
+        
+        plt.savefig(os.path.join(plot_dir, filename))  # save ELBO plot
+        if self.args.verbose: plt.show() # show elbo plot
+        
     def plot_auprc(self, true, pred):
         '''Plot Area Under Precision Recall Curve (AUPRC)
 
@@ -97,21 +365,26 @@ class Trainer(object):
             predicted causal SNPs, obtained where gamma > causality_threshold
         '''
 
+        # TODO: delete this once have fixed NaN problem
+        # remove NaN values
+        idx = np.argwhere(np.isnan(pred) == False)
+        pred = pred[idx]
+        true = true[idx]
+        
         disp = PrecisionRecallDisplay.from_predictions(true, pred)
         
-        plot_dir = 'res/plots' # relative path to directory of saved plots
+        # plot_dir = 'res/auprc' # relative path to directory of AUPRC plots
+        plot_dir = temp_path
         filename = ('AUPRC'
-            f'___opt-{self.args.opt}'
-            f'_causal-thresh-{self.args.causality_threshold}'
+            f'__annotations-{self.args.annotations}'
+            f'_variational-opt-{self.args.variational_opt}'
+            f'_weight-opt-{self.args.weight_opt}'
             f'_lr-{self.args.lr}'
-            f'_max-iter-{self.args.max_iter}'
+            f'_num-epochs-{self.args.num_epochs}'
+            f'_num-steps-{self.args.num_steps}'
             f'_eps-{self.args.eps}'
+            f'_seed-{self.args.seed}'
             '.png'
         )
-
-        # save AUPRC plot
-        plt.savefig(os.path.join(plot_dir, filename))
-
-        # show AUPRC plot
-        if self.args.verbose:
-            plt.show()
+        plt.savefig(os.path.join(plot_dir, filename))  # save AUPRC plot
+        if self.args.verbose: plt.show()  # show AUPRC plot
