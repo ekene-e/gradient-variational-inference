@@ -1,6 +1,6 @@
 import os
 import argparse
-from trainer_new import Trainer
+from trainer import Trainer
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('SparsePro- for Simulated Data')

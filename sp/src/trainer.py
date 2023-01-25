@@ -16,8 +16,6 @@ from binary_opt import Binary
 
 sns.set_theme()
 
-temp_path = '../../prob-ml/final-project/writeup/paper/images/sparsepro_star' # TODO: delete this
-
 class Trainer(object):
     def __init__(self, args):
         self.args = args
@@ -235,8 +233,7 @@ class Trainer(object):
         plt.xlabel('Training Iteration')
         plt.ylabel('ELBO')
         
-        #plot_dir = 'res/elbo' # relative path to directory of ELBO plots
-        plot_dir = temp_path
+        plot_dir = 'res/elbo' # relative path to directory of ELBO plots
         filename = ('ELBO'
             f'__annotations-{self.args.annotations}'
             f'_variational-opt-{self.args.variational_opt}'
@@ -268,8 +265,7 @@ class Trainer(object):
         plt.ylabel('Frequency')
         #plt.legend()
         
-        # plot_dir = 'res/histogram' # relative path to directory of hist plots
-        plot_dir = temp_path
+        plot_dir = 'res/histogram' # relative path to directory of hist plots
         filename = ('hist1'
             f'__annotations-{self.args.annotations}'
             f'_variational-opt-{self.args.variational_opt}'
@@ -301,8 +297,7 @@ class Trainer(object):
         plt.ylabel('Frequency')
         # plt.legend()
         
-        # plot_dir = 'res/histogram' # relative path to directory of hist plots
-        plot_dir = temp_path
+        plot_dir = 'res/histogram' # relative path to directory of hist plots
         filename = ('hist2'
             f'__annotations-{self.args.annotations}'
             f'_variational-opt-{self.args.variational_opt}'
@@ -334,8 +329,7 @@ class Trainer(object):
         plt.ylabel('Frequency')
         # plt.legend()
         
-        # plot_dir = 'res/histogram' # relative path to directory of hist plots
-        plot_dir = temp_path
+        plot_dir = 'res/histogram' # relative path to directory of hist plots
         filename = ('hist3'
             f'__annotations-{self.args.annotations}'
             f'_variational-opt-{self.args.variational_opt}'
@@ -373,8 +367,7 @@ class Trainer(object):
         
         disp = PrecisionRecallDisplay.from_predictions(true, pred)
         
-        # plot_dir = 'res/auprc' # relative path to directory of AUPRC plots
-        plot_dir = temp_path
+        plot_dir = 'res/auprc' # relative path to directory of AUPRC plots
         filename = ('AUPRC'
             f'__annotations-{self.args.annotations}'
             f'_variational-opt-{self.args.variational_opt}'
