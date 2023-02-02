@@ -23,7 +23,7 @@ class Trainer(object):
         
         # true annotation weight vector and true causal SNPs
         self.true_w, self.true_cs = self.data_loader.global_params()
-        print(self.true_cs)
+
         self.num_annotations = self.true_w.shape[0]
         self.w = None # assume no annotation weight vector by default
         
