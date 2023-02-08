@@ -142,10 +142,8 @@ class SparsePro(nn.Module):
         for k in range(self.k):
             idxall = [x for x in range(self.k)]
             idxall.remove(k)
-            beta_all_k = (gamma[:,idxall] * beta_mu[:,idxall]).sum(axis=1)
-            # beta_mu[:,k] = (self.ytX - torch.matmul(beta_all_k, self.XtX)) / (
-            #                 self.beta_post_tau[:,k] * self.y_tau)
             
+            beta_all_k = (gamma[:,idxall] * beta_mu[:,idxall]).sum(axis=1)    
             beta_mu[:,k] = (self.ytX - np.matmul(beta_all_k.numpy(), self.XtX.numpy())) / (
                             self.beta_post_tau[:,k] * self.y_tau)
             

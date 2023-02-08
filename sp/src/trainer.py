@@ -119,7 +119,7 @@ class Trainer(object):
             # update weight vector
             self.weight_opt.zero_grad()
             loss = self.model() # compute updated ELBO
-            loss.backward(retain_graph=True)
+            loss.backward(retain_graph=True) # TODO: maybe delete this b/c gradient is not used
             self.weight_opt.update_model(self.model)
             self.weight_opt.step()
             
@@ -135,7 +135,16 @@ class Trainer(object):
                 self.variational_opt.zero_grad()
                 loss = self.model() # compute ELBO
                 loss.backward(retain_graph=True) # TODO: what happens if I stop this?
-                self.variational_opt.step()     
+                t1 = self.model.gamma() # before
+                self.variational_opt.step()
+                t2 = self.model.gamma() # after
+                
+                idx = torch.argwhere( t1 != t2)
+                print('\nChange in Gamma: ', idx.shape[0], '/', t1.shape[0]*t1.shape[1])  
+                for i in range(idx.shape[0]):
+                    el = idx[i]
+                    print(t1[el[0], el[1]].item(), t2[el[0], el[1]].item())
+                    break
 
     def eval(self):
         print('\n', '-'*35, f'EVALUATION', '-'*35)
