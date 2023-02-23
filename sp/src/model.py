@@ -17,9 +17,6 @@ class SparsePro(nn.Module):
     ):
 
         super(SparsePro, self).__init__()
-        
-        # temporary
-        self.first_pass = False
 
         # data
         self.X = X
@@ -147,37 +144,9 @@ class SparsePro(nn.Module):
             beta_mu[:,k] = (self.ytX - np.matmul(beta_all_k.numpy(), self.XtX.numpy())) / (
                             self.beta_post_tau[:,k] * self.y_tau)
             
-            if beta_mu[:,k].isnan().any() and self.first_pass:
-                # TODO if beta_mu[:,k] has some NaN values, where do this values come from?
-                print(torch.count_nonzero(torch.isnan(beta_mu[:,k])).item(), f'NaN values in beta_mu[:,k] for k={k}')
-                recompute = (self.ytX - torch.matmul(beta_all_k, self.XtX)) / (
-                            self.beta_post_tau[:,k] * self.y_tau)
-                print(torch.count_nonzero(torch.isnan(recompute)).item(), f'NaN values in beta_mu[:,k] for k={k}')
-                
-                # find index where NaN occurs, print corresponding numerator and denominator
-                idx = torch.argwhere(torch.isnan(beta_mu[:,k]) == True)
-                numerator = (self.ytX -torch.matmul(beta_all_k, self.XtX))[idx]
-                denominator = (self.beta_post_tau[:,k] * self.y_tau)[idx]
-                
-                print('beta mu:\t', beta_mu[:,k][idx].T)
-                print('Numerator:\t', numerator.T)
-                print('Denominator:\t', denominator.T)
-                
-                beta_mu[:,k][idx] = numerator / denominator
-                #return beta_mu, u
-            
             u[:,k] = (-0.5*torch.log(self.beta_post_tau[:,k])
                         + torch.log(self.prior_pi.t()) 
                         + 0.5 * beta_mu[:,k]**2 * self.beta_post_tau[:,k])
             gamma[:,k] = self.softmax(u[:,k])
     
-        # occasionally u and beta mu have NaN values (together!)
-        # where do these come from and how do we fix it?
-        # u inherits its NaN values from beta mu --> beta mu is the problem 
-        
-        self.first_pass = False
-        
-        assert(beta_mu.isnan().any() == False)
-        assert(u.isnan().any() == False)
-        
         return beta_mu, u

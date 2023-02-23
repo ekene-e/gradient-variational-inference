@@ -15,7 +15,7 @@ class Binary(Optimizer):
         self.k = model.k # num causal effects
         self.num_snp = self.A.shape[0] # num of SNPs (in this locus)
         self.num_annotations = self.A.shape[1] # num annotations
-        self.softmax = model.softmax
+        self.softmax = model.softmax # softmax over dimension 0
     
     @torch.no_grad()
     def step(self, closure=None):
@@ -35,3 +35,4 @@ class Binary(Optimizer):
             r1 = torch.sum(idx1 * self.gamma[:, i])
                     
             w[i] = torch.log((r1/r0) / (k1/k0))
+            w[i] = 1.0
