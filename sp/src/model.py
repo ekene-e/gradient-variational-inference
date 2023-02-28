@@ -38,7 +38,7 @@ class SparsePro(nn.Module):
 
         # priors
         self.y_tau = 1.0 / (self.y_var * (1-self.h2)) # [1 x 1]
-        self.prior_pi = (1/self.p).repeat(self.p) # [num SNPs x 1]
+        self.pi = (1/self.p).repeat(self.p) # [num SNPs x 1]
         self.beta_prior_tau = torch.tile(torch.tensor(
             (1.0 / self.b_var * np.array([k+1 for k in range(self.k)])), 
             dtype=torch.float32), (self.p, 1))
@@ -77,7 +77,7 @@ class SparsePro(nn.Module):
         betaterm1 = -0.5 * (self.beta_prior_tau * self.gamma() 
             * (self.beta_mu**2)).sum()
         gammaterm1 = (self.gamma() * torch.tile(
-            self.prior_pi.reshape(-1, 1), (1, self.k))).sum()
+            self.pi.reshape(-1, 1), (1, self.k))).sum()
         gammaterm2 = (self.gamma()[self.gamma() != 0] *
             torch.log(self.gamma()[self.gamma() != 0])).sum()
         mkl = betaterm1 + gammaterm1 - gammaterm2
@@ -112,7 +112,8 @@ class SparsePro(nn.Module):
             w ([num_annotations]): vector that weights functional annotations
         """
        
-        self.prior_pi = self.softmax(self.annotations @ w)
+        self.pi = self.softmax(self.annotations @ w)
+        # self.u = nn.Parameter((self.annotations @ w).repeat((self.k)))
 
     def init_variational_params(self):
         '''Initialize the variational parameters gamma and beta_mu with CAVI
@@ -145,7 +146,7 @@ class SparsePro(nn.Module):
                             self.beta_post_tau[:,k] * self.y_tau)
             
             u[:,k] = (-0.5*torch.log(self.beta_post_tau[:,k])
-                        + torch.log(self.prior_pi.t()) 
+                        + torch.log(self.pi.t()) 
                         + 0.5 * beta_mu[:,k]**2 * self.beta_post_tau[:,k])
             gamma[:,k] = self.softmax(u[:,k])
     

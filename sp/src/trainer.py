@@ -30,7 +30,7 @@ class Trainer(object):
         # if using functional annotations
         if self.args.annotations:
             # annotation weight vector to be learned as a parameter
-            self.w = nn.Parameter(torch.tensor([0.]).repeat(self.num_annotations)) #TODO: confirm w should be initialized to 0 (was previously set to 1)
+            self.w = nn.Parameter(torch.tensor([5.]).repeat(self.num_annotations)) #TODO: confirm w should be initialized to 0 (was previously set to 1)
         
             # optimizer for annotation weight vector w
             if self.args.weight_opt == 'adam':
@@ -136,7 +136,9 @@ class Trainer(object):
                 loss = self.model() # compute ELBO
                 loss.backward(retain_graph=True) # TODO: what happens if I stop this?
                 t1 = self.model.gamma() # before
+                print(f'locus {locus} 2: ', self.w)
                 self.variational_opt.step()
+                print(f'locus {locus} 3: ', self.w)
                 t2 = self.model.gamma() # after
                 
                 idx = torch.argwhere( t1 != t2)
@@ -167,7 +169,7 @@ class Trainer(object):
             # compute multivariate-or function using log-sum-exp trick
             multivariate_or = 1 - torch.exp(torch.sum(torch.log(1 - gamma), dim=1))
             val, idx = torch.topk(multivariate_or, 5)
-            if self.args.verbose:
+            if self.args.verbose: # print if verbose
                 print(f'Locus {locus}:\t', idx.detach().numpy(), 
                     '  \t\t(SNP Index)', '\n\t\t', 
                     np.around(val.detach().numpy(), decimals=3),
@@ -182,9 +184,9 @@ class Trainer(object):
             
         # plotting
         self.plot_auprc(true.detach().numpy(), pred.detach().numpy())
-        self.plot_hist1(pred.detach().numpy())
-        self.plot_hist2(pred.detach().numpy())
-        self.plot_hist3(pred.detach().numpy())       
+        # self.plot_hist1(pred.detach().numpy())
+        # self.plot_hist2(pred.detach().numpy())
+        # self.plot_hist3(pred.detach().numpy())       
            
         # printing annotation weight vector
         if self.args.annotations:

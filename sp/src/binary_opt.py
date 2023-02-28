@@ -20,8 +20,9 @@ class Binary(Optimizer):
     @torch.no_grad()
     def step(self, closure=None):
         w = self.param_groups[0]['params'][0]
-        
         t1 = self.A @ w # compute once outside for loop
+        
+        # iterate over all annotations
         for i in range(self.num_annotations):
             t2 = self.A[:,i] * w[i]
             
@@ -33,6 +34,5 @@ class Binary(Optimizer):
             
             r0 = torch.sum(idx0 * self.gamma[:, i])
             r1 = torch.sum(idx1 * self.gamma[:, i])
-                    
+            
             w[i] = torch.log((r1/r0) / (k1/k0))
-            w[i] = 1.0
