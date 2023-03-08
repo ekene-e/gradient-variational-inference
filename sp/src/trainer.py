@@ -30,7 +30,7 @@ class Trainer(object):
         # if using functional annotations
         if self.args.annotations:
             # annotation weight vector to be learned as a parameter
-            self.w = nn.Parameter(torch.tensor([5.]).repeat(self.num_annotations)) #TODO: confirm w should be initialized to 0 (was previously set to 1)
+            self.w = nn.Parameter(torch.tensor([0.]).repeat(self.num_annotations)) #TODO: confirm w should be initialized to 0 (was previously set to 1)
         
             # optimizer for annotation weight vector w
             if self.args.weight_opt == 'adam':
